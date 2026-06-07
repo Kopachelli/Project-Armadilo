@@ -93,8 +93,10 @@ per-root spawn caps. MCP binds loopback-only and requires a shared token. Everyt
   CLI vs Desktop distinct); **git worktree isolation** + **cross-tool chains** (`chain`);
   **Claude-hook live supervision** (`supervise`: observe + interrupt a running session via PreToolUse);
   registry-based desktop-app detection; expanded catalog (Antigravity, Hermes, OpenClaw, Kimi, MiniMax + desktop apps).
-- **Next** — full Zed-ACP conformance + A2A streaming; richer routing priors;
-  Phase 5 = a standalone WPF dashboard app over the control API; cross-platform; cloud.
+- **Also done** — Phase 5 **standalone WPF dashboard** (portable + Inno installer); **A2A streaming**
+  (JSON-RPC `message/stream` over SSE, verified live) + hardened **Zed ACP** bridge in the sidecar.
+- **Next** — richer learned routing priors; cross-platform (`IProcessHost`/`IPathProvider` POSIX impls);
+  cloud/multi-machine; verify preview CLI adapters against real binaries.
 
 ## License
 
