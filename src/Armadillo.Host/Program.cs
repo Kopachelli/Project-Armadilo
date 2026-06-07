@@ -33,6 +33,8 @@ switch (command)
         return await ConnectAsync(args);
     case "disconnect":
         return await DisconnectAsync(args);
+    case "autostart":
+        return Autostart(args);
     case "improve":
         return await ImproveAsync(args);
     case "playbooks":
@@ -525,6 +527,37 @@ static async Task<int> DisconnectAsync(string[] args)
     return 0;
 }
 
+// Admin-free autostart: a hidden VBS launcher in the user's Startup folder runs the daemon at login
+// (no scheduled-task elevation, no console window). on = write it, off = delete it, status = check.
+static int Autostart(string[] args)
+{
+    var sub = args.Length > 1 ? args[1].ToLowerInvariant() : "status";
+    var exe = Environment.ProcessPath ?? "armadillo";
+    var startup = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
+    var vbs = Path.Combine(startup, "Armadillo.vbs");
+
+    switch (sub)
+    {
+        case "on":
+            if (Path.GetFileNameWithoutExtension(exe).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+            { Console.Error.WriteLine("Run `autostart on` from the installed armadillo.exe, not via dotnet run."); return 2; }
+            // VBS: WScript.Shell.Run "<exe> serve", 0 (hidden), False (don't wait).
+            var script = "CreateObject(\"WScript.Shell\").Run \"\"\"" + exe + "\"\" serve\", 0, False";
+            Directory.CreateDirectory(startup);
+            File.WriteAllText(vbs, script);
+            Console.WriteLine($"Autostart ON — the daemon launches hidden at every login.\n  Startup launcher: {vbs}");
+            Console.WriteLine("Start it now without logging out:  armadillo serve   (or run the .vbs).");
+            return 0;
+        case "off":
+            if (File.Exists(vbs)) File.Delete(vbs);
+            Console.WriteLine("Autostart OFF.");
+            return 0;
+        default:
+            Console.WriteLine(File.Exists(vbs) ? $"Autostart: ON  ({vbs})" : "Autostart: off.");
+            return 0;
+    }
+}
+
 static string GetOrCreateDaemonToken(IPathProvider paths)
 {
     var file = Path.Combine(paths.ConfigDir, "daemon.token");
@@ -650,6 +683,7 @@ static void PrintHelp()
           serve         Run the Registrator daemon + MCP/control/hook server (default 127.0.0.1:8787)
           connect       Wire your Claude Code into Armadillo (user-scope MCP + global hooks)
           disconnect    Remove the Armadillo MCP server + hooks from your Claude config
+          autostart     Run the daemon at login: autostart <on|off|status>
           run           Spawn headless session(s): run "<task>" [--tool T] [--count N] [--review-model M]
           assets        Show skills + MCP servers + configs per tool variant: assets [filter]
           chain         Run a cross-tool pipeline: chain "<goal>" [--repo PATH] | chain --spec file.json
