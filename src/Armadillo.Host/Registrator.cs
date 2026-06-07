@@ -71,6 +71,9 @@ public sealed class Registrator : IDisposable
             new GeminiAdapter(),
             new QwenAdapter(),
             new CodexAdapter(),
+            new AntigravityAdapter(),
+            new HermesAdapter(),
+            new OpenClawAdapter(),
         });
         var mcpEndpoint = new McpEndpoint();
         var router = new Router(detector, adapters);

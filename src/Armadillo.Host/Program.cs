@@ -40,18 +40,22 @@ static async Task<int> DoctorAsync()
     var detector = new ToolDetector(home: paths.HomeDirectory);
     var snapshot = await detector.DetectAsync();
 
+    var drivable = snapshot.Tools.Count(t => t.Drivable);
     Console.WriteLine($"Detected {snapshot.Installed.Count()}/{snapshot.Tools.Count} tools  "
-                      + $"(at {snapshot.TakenAt:u})");
+                      + $"({drivable} drivable headlessly)  (at {snapshot.TakenAt:u})");
     Console.WriteLine();
 
-    const string fmt = "  {0,-2} {1,-20} {2,-12} {3}";
+    const string fmt = "  {0,-2} {1,-26} {2,-12} {3}";
     Console.WriteLine(string.Format(fmt, "", "TOOL", "VERSION", "CAPABILITIES"));
-    Console.WriteLine("  " + new string('-', 72));
+    Console.WriteLine("  " + new string('-', 76));
     foreach (var t in snapshot.Tools)
     {
         var mark = t.Installed ? "ok" : "--";
         var version = Truncate(t.Version ?? (t.Installed ? "?" : "absent"), 12);
-        var caps = t.Installed ? RenderCaps(t.Capabilities) : "";
+        var caps = !t.Installed ? ""
+            : t.Kind == ToolKind.Desktop ? "desktop GUI (not drivable)"
+            : t.Kind == ToolKind.Runtime ? "runtime " + RenderCaps(t.Capabilities)
+            : RenderCaps(t.Capabilities);
         Console.WriteLine(string.Format(fmt, mark, t.DisplayName, version, caps));
         if (t.Id == ToolId.Ollama && t.Models.Count > 0)
             Console.WriteLine($"        models: {string.Join(", ", t.Models)}");

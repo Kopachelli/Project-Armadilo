@@ -15,26 +15,46 @@ public abstract class CliAdapterBase : IToolAdapter
     public abstract ToolId Id { get; }
     public ToolCapabilities Capabilities => ToolDescriptor.For(Id).Capabilities;
 
-    /// <summary>argv (flags only — the task goes via stdin). May read brief.Provider.Model etc.</summary>
-    protected abstract IReadOnlyList<string> BuildArgs(AgentBrief brief);
+    /// <summary>argv (flags only — the task goes via stdin). May read brief.Provider.Model etc.
+    /// Adapters that override <see cref="BuildRunSpec"/> (argv-prompt tools) can ignore this.</summary>
+    protected virtual IReadOnlyList<string> BuildArgs(AgentBrief brief) => Array.Empty<string>();
 
     public virtual RunSpec BuildRunSpec(AgentBrief brief, string executablePath)
-    {
-        var env = new Dictionary<string, string>(brief.Provider.EnvOverrides());
-        foreach (var (k, v) in brief.ExtraEnv) env[k] = v;
-
-        return new RunSpec
+        => new()
         {
             FilePath = executablePath,
             Arguments = BuildArgs(brief),
             StdinText = ComposeStdin(brief),
             WorkingDirectory = brief.WorkingDirectory,
-            Environment = env,
+            Environment = MergeEnv(brief),
+            Timeout = brief.Timeout,
+        };
+
+    /// <summary>For tools that take the prompt as a flag VALUE (argv) rather than via stdin
+    /// (e.g. <c>agy -p "..."</c>, <c>hermes chat -q "..."</c>).</summary>
+    protected RunSpec ArgvPromptSpec(AgentBrief brief, string executablePath,
+        IReadOnlyList<string> leadingArgs, string promptFlag)
+    {
+        var args = new List<string>(leadingArgs) { promptFlag, ComposeStdin(brief) };
+        return new RunSpec
+        {
+            FilePath = executablePath,
+            Arguments = args,
+            StdinText = null,
+            WorkingDirectory = brief.WorkingDirectory,
+            Environment = MergeEnv(brief),
             Timeout = brief.Timeout,
         };
     }
 
-    /// <summary>Tools without a system-prompt flag get the persona folded into the stdin task.</summary>
+    protected static IReadOnlyDictionary<string, string> MergeEnv(AgentBrief brief)
+    {
+        var env = new Dictionary<string, string>(brief.Provider.EnvOverrides());
+        foreach (var (k, v) in brief.ExtraEnv) env[k] = v;
+        return env;
+    }
+
+    /// <summary>Tools without a system-prompt flag get the persona folded into the task.</summary>
     protected static string ComposeStdin(AgentBrief brief)
         => string.IsNullOrWhiteSpace(brief.Persona)
             ? brief.Task

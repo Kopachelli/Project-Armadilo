@@ -16,6 +16,17 @@ public enum AdapterFamily
     Runtime,
 }
 
+/// <summary>What kind of thing this is — determines whether the harness can drive it headlessly.</summary>
+public enum ToolKind
+{
+    /// <summary>A headless CLI we can spawn as a child process and orchestrate.</summary>
+    Cli,
+    /// <summary>A local model runtime reached over HTTP (Ollama, LM Studio…).</summary>
+    Runtime,
+    /// <summary>A GUI desktop app — detected/reported, but NOT drivable as a headless child.</summary>
+    Desktop,
+}
+
 /// <summary>
 /// Static, compile-time metadata for each tool: how to find it, how to invoke it headlessly,
 /// and what it can do. Detection turns a descriptor + the machine state into a <see cref="DetectedTool"/>.
@@ -31,6 +42,16 @@ public sealed record ToolDescriptor(
     string? McpConfigHint,
     string Notes)
 {
+    /// <summary>CLI / Runtime / Desktop. Defaults to CLI.</summary>
+    public ToolKind Kind { get; init; } = ToolKind.Cli;
+
+    /// <summary>For desktop apps: candidate install paths (env vars expanded) checked instead of PATH,
+    /// so a GUI app isn't confused with a same-named CLI binary.</summary>
+    public IReadOnlyList<string> AppPaths { get; init; } = Array.Empty<string>();
+
+    /// <summary>Whether the harness can spawn + orchestrate it headlessly (everything but desktop GUIs).</summary>
+    public bool Drivable => Kind != ToolKind.Desktop;
+
     private const ToolCapabilities Cli =
         ToolCapabilities.Headless | ToolCapabilities.StreamJson | ToolCapabilities.McpClient;
 
@@ -71,7 +92,7 @@ public sealed record ToolDescriptor(
             Capabilities: Cli | ToolCapabilities.LocalProvider | ToolCapabilities.Acp,
             VersionArgs: new[] { "--version" },
             McpConfigHint: ".gemini/settings.json",
-            Notes: "gemini -p --yolo --output-format json. Gemini-family base."),
+            Notes: "gemini -p --yolo --output-format json. Gemini-family base. NOTE: being superseded by Antigravity CLI (free tier ends 2026-06-18)."),
 
         new ToolDescriptor(ToolId.Qwen, "Qwen Code",
             ExecutableNames: new[] { "qwen" },
@@ -102,13 +123,41 @@ public sealed record ToolDescriptor(
             Notes: "Reshapeable terminal agent; skills in ~/.pi/agent/skills; unified LLM API (local models)."),
 
         new ToolDescriptor(ToolId.OpenCode, "OpenCode",
-            ExecutableNames: new[] { "opencode", "open-code", "openclaw", "open-claw" },
-            DotFolders: new[] { ".opencode", ".openclaw" },
+            ExecutableNames: new[] { "opencode", "open-code" },
+            DotFolders: new[] { ".opencode" },
             Family: AdapterFamily.Daemon,
             Capabilities: Cli | ToolCapabilities.HttpDaemon,
             VersionArgs: new[] { "--version" },
             McpConfigHint: ".opencode/opencode.json",
             Notes: "opencode run --format json OR opencode serve (HTTP+OpenAPI); @opencode-ai/sdk."),
+
+        new ToolDescriptor(ToolId.OpenClaw, "OpenClaw",
+            ExecutableNames: new[] { "openclaw", "open-claw" },
+            DotFolders: new[] { ".openclaw" },
+            Family: AdapterFamily.Generic,
+            Capabilities: ToolCapabilities.Headless | ToolCapabilities.McpClient | ToolCapabilities.LocalProvider,
+            VersionArgs: new[] { "--version" },
+            McpConfigHint: null,
+            Notes: "Life-automation/orchestration platform (openclaw.ai); persistent memory; can itself spawn coding agents. Preview."),
+
+        new ToolDescriptor(ToolId.Hermes, "Hermes Agent",
+            ExecutableNames: new[] { "hermes", "hermes-cli", "tirith" },
+            DotFolders: new[] { ".hermes" },
+            Family: AdapterFamily.Generic,
+            Capabilities: ToolCapabilities.Headless | ToolCapabilities.Resume | ToolCapabilities.McpClient
+                          | ToolCapabilities.LocalProvider,
+            VersionArgs: new[] { "--version" },
+            McpConfigHint: null,
+            Notes: "Nous Research autonomous agent: `hermes chat -q \"...\"`; `-w` isolated worktree. Linux/macOS/WSL2."),
+
+        new ToolDescriptor(ToolId.Antigravity, "Google Antigravity CLI",
+            ExecutableNames: new[] { "agy", "antigravity" },
+            DotFolders: new[] { ".antigravity" },
+            Family: AdapterFamily.Gemini,
+            Capabilities: ToolCapabilities.Headless | ToolCapabilities.McpClient | ToolCapabilities.LocalProvider,
+            VersionArgs: new[] { "--version" },
+            McpConfigHint: "mcp_config.json",
+            Notes: "Successor to Gemini CLI (Go). Command mode: `agy -p \"prompt\"`; async subagents; MCP stdio+HTTP."),
 
         new ToolDescriptor(ToolId.Zai, "z.ai (GLM) CLI",
             ExecutableNames: new[] { "zai", "zai-cli" },
@@ -126,7 +175,68 @@ public sealed record ToolDescriptor(
             Capabilities: ToolCapabilities.LocalProvider | ToolCapabilities.HttpDaemon,
             VersionArgs: new[] { "--version" },
             McpConfigHint: null,
-            Notes: "Local model runtime; HTTP :11434 (/api/chat, /v1/..., /api/tags). Default reviewer/embeddings."),
+            Notes: "Local model runtime; HTTP :11434 (/api/chat, /v1/..., /api/tags). Default reviewer/embeddings.")
+            { Kind = ToolKind.Runtime },
+
+        // --- Desktop GUI apps: detected & reported, but NOT headless-drivable (no adapter). ---
+
+        new ToolDescriptor(ToolId.CopilotDesktop, "GitHub Copilot (Desktop)",
+            ExecutableNames: Array.Empty<string>(), DotFolders: Array.Empty<string>(),
+            Family: AdapterFamily.Generic, Capabilities: ToolCapabilities.None,
+            VersionArgs: Array.Empty<string>(), McpConfigHint: null,
+            Notes: "Standalone agent-native desktop app (preview). GUI — drive the `copilot` CLI instead.")
+            {
+                Kind = ToolKind.Desktop,
+                AppPaths = new[]
+                {
+                    @"%LOCALAPPDATA%\Programs\GitHubCopilot\GitHub Copilot.exe",
+                    @"%LOCALAPPDATA%\Programs\github-copilot\GitHub Copilot.exe",
+                    @"%PROGRAMFILES%\GitHub Copilot\GitHub Copilot.exe",
+                },
+            },
+
+        new ToolDescriptor(ToolId.CodexApp, "OpenAI Codex (App)",
+            ExecutableNames: Array.Empty<string>(), DotFolders: Array.Empty<string>(),
+            Family: AdapterFamily.Generic, Capabilities: ToolCapabilities.None,
+            VersionArgs: Array.Empty<string>(), McpConfigHint: null,
+            Notes: "Codex desktop app (Windows/macOS) for parallel threads. GUI — drive the `codex` CLI instead.")
+            {
+                Kind = ToolKind.Desktop,
+                AppPaths = new[]
+                {
+                    @"%LOCALAPPDATA%\Programs\codex\Codex.exe",
+                    @"%LOCALAPPDATA%\Programs\@openai\Codex.exe",
+                    @"%PROGRAMFILES%\Codex\Codex.exe",
+                },
+            },
+
+        new ToolDescriptor(ToolId.HermesDesktop, "Hermes (Desktop)",
+            ExecutableNames: Array.Empty<string>(), DotFolders: Array.Empty<string>(),
+            Family: AdapterFamily.Generic, Capabilities: ToolCapabilities.None,
+            VersionArgs: Array.Empty<string>(), McpConfigHint: null,
+            Notes: "Native Hermes GUI (preview). GUI — drive the `hermes` CLI instead.")
+            {
+                Kind = ToolKind.Desktop,
+                AppPaths = new[]
+                {
+                    @"%LOCALAPPDATA%\Programs\Hermes\Hermes.exe",
+                    @"%LOCALAPPDATA%\Programs\hermes-desktop\Hermes.exe",
+                },
+            },
+
+        new ToolDescriptor(ToolId.ClaudeDesktop, "Claude (Desktop)",
+            ExecutableNames: Array.Empty<string>(), DotFolders: Array.Empty<string>(),
+            Family: AdapterFamily.Generic, Capabilities: ToolCapabilities.None,
+            VersionArgs: Array.Empty<string>(), McpConfigHint: null,
+            Notes: "Claude desktop app. GUI — drive the `claude` CLI instead.")
+            {
+                Kind = ToolKind.Desktop,
+                AppPaths = new[]
+                {
+                    @"%LOCALAPPDATA%\AnthropicClaude\Claude.exe",
+                    @"%LOCALAPPDATA%\Programs\claude\Claude.exe",
+                },
+            },
     };
 
     public static ToolDescriptor For(ToolId id) => All.First(d => d.Id == id);

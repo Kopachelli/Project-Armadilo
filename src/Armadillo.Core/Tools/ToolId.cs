@@ -6,6 +6,7 @@ namespace Armadillo.Core.Tools;
 /// </summary>
 public enum ToolId
 {
+    // Headless CLIs (drivable as child processes)
     Claude,
     Codex,
     Cursor,
@@ -14,6 +15,17 @@ public enum ToolId
     Copilot,
     Pi,
     OpenCode,
+    OpenClaw,
+    Hermes,
+    Antigravity,
     Zai,
+
+    // Local model runtime
     Ollama,
+
+    // Desktop apps (GUI — detected/reported, NOT headless-drivable)
+    CopilotDesktop,
+    CodexApp,
+    HermesDesktop,
+    ClaudeDesktop,
 }

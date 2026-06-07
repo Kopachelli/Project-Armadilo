@@ -32,6 +32,23 @@ public sealed class ToolDetector : IToolDetector
         {
             var signals = new List<string>();
 
+            // Desktop GUIs are found by install path, NOT PATH (so a GUI isn't confused with a same-named CLI).
+            if (d.Kind == ToolKind.Desktop)
+            {
+                foreach (var raw in d.AppPaths)
+                {
+                    var path = Environment.ExpandEnvironmentVariables(raw);
+                    if (File.Exists(path))
+                    {
+                        return DetectedTool.NotFound(d) with
+                        {
+                            Installed = true, ExecutablePath = path, Signals = new[] { $"app:{path}" },
+                        };
+                    }
+                }
+                return DetectedTool.NotFound(d);
+            }
+
             // Secondary signal: a tool dotfolder under home.
             foreach (var folder in d.DotFolders)
             {
@@ -48,7 +65,10 @@ public sealed class ToolDetector : IToolDetector
             }
             signals.Insert(0, $"exe:{exe}");
 
-            var version = await ProbeVersionAsync(exe, d.VersionArgs, ct).ConfigureAwait(false);
+            // Never run `--version` on a GUI app (it would launch a window).
+            var version = d.Kind == ToolKind.Desktop
+                ? null
+                : await ProbeVersionAsync(exe, d.VersionArgs, ct).ConfigureAwait(false);
 
             IReadOnlyList<string> models = Array.Empty<string>();
             if (d.Id == ToolId.Ollama)
@@ -57,7 +77,7 @@ public sealed class ToolDetector : IToolDetector
             return new DetectedTool(
                 d.Id, d.DisplayName, Installed: true, ExecutablePath: exe, Version: version,
                 Capabilities: d.Capabilities, Family: d.Family,
-                Signals: signals, Models: models, Notes: d.Notes);
+                Signals: signals, Models: models, Notes: d.Notes) { Kind = d.Kind };
         }
         catch
         {
