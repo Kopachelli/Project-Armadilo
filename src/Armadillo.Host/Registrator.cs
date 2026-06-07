@@ -35,9 +35,11 @@ public sealed class Registrator : IDisposable
     public IBrain Brain { get; }
     public McpEndpoint McpEndpoint { get; }
     public ISelfImprovementEngine Improvement { get; }
+    public ChainRunner Chains { get; }
 
     private Registrator(IPathProvider paths, IStore store, IToolDetector detector,
-        AgentDispatcher dispatcher, IBrain brain, McpEndpoint mcpEndpoint, ISelfImprovementEngine improvement)
+        AgentDispatcher dispatcher, IBrain brain, McpEndpoint mcpEndpoint, ISelfImprovementEngine improvement,
+        ChainRunner chains)
     {
         Paths = paths;
         Store = store;
@@ -46,6 +48,7 @@ public sealed class Registrator : IDisposable
         Brain = brain;
         McpEndpoint = mcpEndpoint;
         Improvement = improvement;
+        Chains = chains;
     }
 
     public static Registrator Create(RegistratorOptions? options = null, Action<string>? log = null)
@@ -79,9 +82,11 @@ public sealed class Registrator : IDisposable
         });
         var mcpEndpoint = new McpEndpoint();
         var router = new Router(detector, adapters);
+        var worktrees = new WorktreeManager(runner);
 
         var dispatcher = new AgentDispatcher(adapters, detector, runner, store, brain, reviewer,
-            governor, paths, router, mcpEndpoint, log);
+            governor, paths, router, mcpEndpoint, worktrees, log);
+        var chains = ChainRunner.For(dispatcher);
 
         var evaluator = new DispatcherEvaluator(dispatcher);
         var proposer = new OllamaProposer(ollama, options.ImproveModel ?? options.ReviewModel);
@@ -90,7 +95,7 @@ public sealed class Registrator : IDisposable
             Autonomy = options.Autonomy,
         }, log);
 
-        return new Registrator(paths, store, detector, dispatcher, brain, mcpEndpoint, improvement);
+        return new Registrator(paths, store, detector, dispatcher, brain, mcpEndpoint, improvement, chains);
     }
 
     public void Dispose() => Store.Dispose();

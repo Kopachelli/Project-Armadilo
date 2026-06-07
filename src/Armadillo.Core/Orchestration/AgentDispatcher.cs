@@ -19,6 +19,9 @@ public sealed record SpawnRequest
     public string? RequesterSession { get; init; }
     public string? ParentJobId { get; init; }
     public TimeSpan Timeout { get; init; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>If set and a git repo, the session runs in an isolated git worktree off it (cleaned up after).</summary>
+    public string? RepoPath { get; init; }
 }
 
 public sealed record SpawnOutcome
@@ -54,12 +57,14 @@ public sealed class AgentDispatcher
     private readonly IPathProvider _paths;
     private readonly IRouter? _router;
     private readonly McpEndpoint? _mcp;
+    private readonly WorktreeManager? _worktrees;
     private readonly Action<string>? _log;
 
     public AgentDispatcher(
         AdapterRegistry adapters, IToolDetector detector, IProcessRunner runner, IStore store,
         IBrain brain, IReviewer reviewer, IGovernor governor, IPathProvider paths,
-        IRouter? router = null, McpEndpoint? mcp = null, Action<string>? log = null)
+        IRouter? router = null, McpEndpoint? mcp = null, WorktreeManager? worktrees = null,
+        Action<string>? log = null)
     {
         _adapters = adapters;
         _detector = detector;
@@ -71,6 +76,7 @@ public sealed class AgentDispatcher
         _paths = paths;
         _router = router;
         _mcp = mcp;
+        _worktrees = worktrees;
         _log = log;
     }
 
@@ -93,6 +99,7 @@ public sealed class AgentDispatcher
     {
         var jobId = Ids.New("job");
         var now = DateTimeOffset.UtcNow;
+        string? wtRepo = null, wtPath = null; // git worktree to clean up, if created
 
         // 1. Fork-bomb / budget guard FIRST.
         var (acquired, release, denyReason) = _governor.BeginSession(req.Lineage);
@@ -139,9 +146,21 @@ public sealed class AgentDispatcher
             // 5. Build the brief + run spec. Child lineage is injected so a sub-spawn is bounded.
             var sessionId = Ids.New("ses");
             var sessionDir = _paths.SessionDir(sessionId);
-            var worktree = _paths.WorktreeDir(sessionId);
             Directory.CreateDirectory(sessionDir);
-            Directory.CreateDirectory(worktree);
+
+            // Isolation: a real git worktree off the target repo if given, else a plain scratch dir.
+            var worktree = _paths.WorktreeDir(sessionId);
+            if (req.RepoPath is { } repo && _worktrees is not null && WorktreeManager.IsGitRepo(repo))
+            {
+                var created = await _worktrees.CreateAsync(repo, sessionId, worktree, ct).ConfigureAwait(false);
+                if (created is not null)
+                {
+                    worktree = created; wtRepo = repo; wtPath = created;
+                    _log?.Invoke($"[worktree] {sessionId} isolated at {created}");
+                }
+                else { Directory.CreateDirectory(worktree); }
+            }
+            else { Directory.CreateDirectory(worktree); }
 
             var childLineage = req.Lineage; // the spawned process runs AT this depth
             var mcpConfigPath = WriteChildMcpConfig(sessionDir, childLineage);
@@ -233,6 +252,14 @@ public sealed class AgentDispatcher
             _store.Audit("dispatcher", "error", jobId, ex.Message);
             _log?.Invoke($"[dispatch] {jobId} ERROR: {ex.Message}");
             return SpawnOutcome.Denied(jobId, "error: " + ex.Message);
+        }
+        finally
+        {
+            if (wtRepo is not null && wtPath is not null && _worktrees is not null)
+            {
+                try { await _worktrees.RemoveAsync(wtRepo, wtPath, ct).ConfigureAwait(false); }
+                catch { /* leave for `git worktree prune` */ }
+            }
         }
     }
 

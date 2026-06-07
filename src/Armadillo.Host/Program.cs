@@ -18,6 +18,8 @@ switch (command)
         return await RunAsync(args);
     case "assets":
         return await AssetsAsync(args);
+    case "chain":
+        return await ChainAsync(args);
     case "improve":
         return await ImproveAsync(args);
     case "playbooks":
@@ -169,6 +171,65 @@ static async Task<int> RunAsync(string[] args)
     return outcomes.All(o => o.Ok) ? 0 : 1;
 }
 
+static async Task<int> ChainAsync(string[] args)
+{
+    var opts = ParseFlags(args);
+    using var reg = Registrator.Create(new RegistratorOptions
+    {
+        ReviewModel = opts.Get("review-model"),
+        EmbedModel = opts.Get("embed-model"),
+    }, log: line => Console.Error.WriteLine(line));
+
+    string goal;
+    string? repo = opts.Get("repo");
+    List<ChainStep> steps;
+
+    var specPath = opts.Get("spec");
+    if (specPath is not null)
+    {
+        var spec = System.Text.Json.JsonSerializer.Deserialize<ChainSpec>(
+            await File.ReadAllTextAsync(specPath),
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        if (spec?.Steps is null || spec.Steps.Count == 0) { Console.Error.WriteLine("spec has no steps"); return 2; }
+        goal = spec.Goal ?? opts.Positional ?? "";
+        repo ??= spec.Repo;
+        steps = spec.Steps.Select(s => new ChainStep(
+            s.Name ?? "step",
+            Enum.TryParse<ToolId>(s.Tool, ignoreCase: true, out var t) ? t : ToolId.Claude,
+            s.Persona ?? "You are a focused helper agent.",
+            s.Task ?? "{input}")).ToList();
+    }
+    else
+    {
+        goal = opts.Positional ?? "";
+        if (string.IsNullOrWhiteSpace(goal))
+        {
+            Console.Error.WriteLine("usage: armadillo chain \"<goal>\" [--repo PATH] [--review-model M]   OR   chain --spec file.json");
+            return 2;
+        }
+        // Built-in demo: implement -> review, cross-step output threading.
+        steps = new List<ChainStep>
+        {
+            new("implement", ToolId.Claude, "You are a senior engineer. Be concise and correct.", "{goal}"),
+            new("review", ToolId.Claude, "You are a critical code/output reviewer.",
+                "Review the following work for correctness and quality. End with 'Verdict: APPROVE' or 'Verdict: REVISE'.\n\n{input}"),
+        };
+    }
+
+    Console.WriteLine($"Running chain ({steps.Count} steps){(repo is not null ? $" on repo {repo}" : "")}…");
+    var result = await reg.Chains.RunAsync(steps, goal, repoPath: repo);
+
+    foreach (var s in result.Steps)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"== step '{s.Name}' [{s.Tool}] {(s.Ok ? "ok" : "FAILED")} (job {s.JobId}) ==");
+        Console.WriteLine(s.Output);
+    }
+    Console.WriteLine();
+    Console.WriteLine(result.Ok ? "chain completed." : "chain stopped on a failed step.");
+    return result.Ok ? 0 : 1;
+}
+
 static async Task<int> AssetsAsync(string[] args)
 {
     var opts = ParseFlags(args);
@@ -306,6 +367,7 @@ static void PrintHelp()
           serve         Run the Registrator daemon + MCP server
           run           Spawn headless session(s): run "<task>" [--tool T] [--count N] [--review-model M]
           assets        Show skills + MCP servers + configs per tool variant: assets [filter]
+          chain         Run a cross-tool pipeline: chain "<goal>" [--repo PATH] | chain --spec file.json
           improve       Self-improvement cycle: improve <playbook> --tasks "a||b" [--review-model M]
           playbooks     List versions of a playbook: playbooks <name>
           kill-switch   Halt/allow self-modification: kill-switch <on|off|status>
@@ -317,3 +379,6 @@ internal sealed record FlagSet(Dictionary<string, string> Flags, string? Positio
 {
     public string? Get(string key) => Flags.TryGetValue(key, out var v) ? v : null;
 }
+
+internal sealed record ChainSpec(string? Goal, string? Repo, List<ChainStepSpec>? Steps);
+internal sealed record ChainStepSpec(string? Name, string? Tool, string? Persona, string? Task);
