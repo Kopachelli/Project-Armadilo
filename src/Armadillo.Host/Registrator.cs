@@ -16,6 +16,8 @@ public sealed record RegistratorOptions
     public string? Workspace { get; init; }
     public string? ReviewModel { get; init; }
     public string? EmbedModel { get; init; }
+    public string? ImproveModel { get; init; }
+    public AutonomyLevel Autonomy { get; init; } = AutonomyLevel.Autonomous;
     public GovernorOptions Governor { get; init; } = new();
 }
 
@@ -32,9 +34,10 @@ public sealed class Registrator : IDisposable
     public AgentDispatcher Dispatcher { get; }
     public IBrain Brain { get; }
     public McpEndpoint McpEndpoint { get; }
+    public ISelfImprovementEngine Improvement { get; }
 
     private Registrator(IPathProvider paths, IStore store, IToolDetector detector,
-        AgentDispatcher dispatcher, IBrain brain, McpEndpoint mcpEndpoint)
+        AgentDispatcher dispatcher, IBrain brain, McpEndpoint mcpEndpoint, ISelfImprovementEngine improvement)
     {
         Paths = paths;
         Store = store;
@@ -42,6 +45,7 @@ public sealed class Registrator : IDisposable
         Dispatcher = dispatcher;
         Brain = brain;
         McpEndpoint = mcpEndpoint;
+        Improvement = improvement;
     }
 
     public static Registrator Create(RegistratorOptions? options = null, Action<string>? log = null)
@@ -60,13 +64,28 @@ public sealed class Registrator : IDisposable
         var brain = new Brain(store, ollama, options.EmbedModel);
         var governor = new Governor(options.Governor);
         var runner = new ProcessRunner();
-        var adapters = new AdapterRegistry(new IToolAdapter[] { new ClaudeAdapter() });
+        var adapters = new AdapterRegistry(new IToolAdapter[]
+        {
+            new ClaudeAdapter(),
+            new CursorAdapter(),
+            new GeminiAdapter(),
+            new QwenAdapter(),
+            new CodexAdapter(),
+        });
         var mcpEndpoint = new McpEndpoint();
+        var router = new Router(detector, adapters);
 
         var dispatcher = new AgentDispatcher(adapters, detector, runner, store, brain, reviewer,
-            governor, paths, mcpEndpoint, log);
+            governor, paths, router, mcpEndpoint, log);
 
-        return new Registrator(paths, store, detector, dispatcher, brain, mcpEndpoint);
+        var evaluator = new DispatcherEvaluator(dispatcher);
+        var proposer = new OllamaProposer(ollama, options.ImproveModel ?? options.ReviewModel);
+        var improvement = new SelfImprovementEngine(store, proposer, evaluator, new SelfImprovementOptions
+        {
+            Autonomy = options.Autonomy,
+        }, log);
+
+        return new Registrator(paths, store, detector, dispatcher, brain, mcpEndpoint, improvement);
     }
 
     public void Dispose() => Store.Dispose();

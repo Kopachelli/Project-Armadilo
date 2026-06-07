@@ -39,37 +39,53 @@ public sealed class RegistratorTools
     }
 
     [McpServerTool(Name = "request_agent")]
-    [Description("Delegate a sub-task to a fresh standalone AI agent. The harness picks/spawns a " +
-                 "headless CLI agent, captures and reviews its work, and returns the result. Use when " +
-                 "you need an independent agent to handle a self-contained piece of work.")]
+    [Description("Delegate a sub-task to one or more fresh standalone AI agents. The harness picks/spawns " +
+                 "headless CLI agent(s), captures and reviews their work, and returns the result(s). Use " +
+                 "when you need independent agent(s) to handle a self-contained piece of work. Set count>1 " +
+                 "to get several independent attempts.")]
     public async Task<string> RequestAgent(
-        [Description("The self-contained task for the sub-agent to complete.")] string task,
-        [Description("Optional persona/system instructions for the sub-agent.")] string? persona = null,
-        [Description("Optional tool to use (e.g. 'claude'). Defaults to the best available.")] string? tool = null,
+        [Description("The self-contained task for the sub-agent(s) to complete.")] string task,
+        [Description("Optional persona/system instructions for the sub-agent(s).")] string? persona = null,
+        [Description("Optional tool to use (e.g. 'claude','cursor','gemini'). Defaults to the best available.")] string? tool = null,
+        [Description("How many independent agents to run on this task (1-8). Default 1.")] int count = 1,
         CancellationToken ct = default)
     {
         var (ok, reason) = Authorize();
         if (!ok) return $"DENIED: {reason}";
 
-        var lineage = CallerChildLineage();
-        var toolId = ParseTool(tool);
-
-        var outcome = await _dispatcher.DispatchAsync(new SpawnRequest
+        var req = new SpawnRequest
         {
             Persona = persona ?? "You are a focused helper agent. Complete the task directly and concisely.",
             Task = task,
-            Tool = toolId,
-            Lineage = lineage,
+            Tool = ParseTool(tool),
+            Lineage = CallerChildLineage(),
             RequesterSession = CallerLineageHeader(),
-        }, ct);
+        };
 
-        if (!outcome.Ok && outcome.SessionId is null)
-            return $"DENIED: {outcome.Reason}";
+        var n = Math.Clamp(count, 1, 8);
+        if (n == 1)
+        {
+            var outcome = await _dispatcher.DispatchAsync(req, ct);
+            if (!outcome.Ok && outcome.SessionId is null) return $"DENIED: {outcome.Reason}";
+            _results.Put(outcome.JobId, outcome.FinalText);
+            return Format(outcome);
+        }
 
-        _results.Put(outcome.JobId, outcome.FinalText);
+        var outcomes = await _dispatcher.DispatchManyAsync(req, n, ct: ct);
+        var sb = new System.Text.StringBuilder($"Ran {outcomes.Count} agents on the task:\n");
+        for (int i = 0; i < outcomes.Count; i++)
+        {
+            _results.Put(outcomes[i].JobId, outcomes[i].FinalText);
+            sb.AppendLine($"\n=== Agent {i + 1} ===");
+            sb.AppendLine(Format(outcomes[i]));
+        }
+        return sb.ToString();
+    }
 
-        var verdict = outcome.Verdict == Verdict.Skipped ? "" : $" [review: {outcome.Verdict} {outcome.Confidence:0.00}]";
-        return $"job={outcome.JobId} status={(outcome.Ok ? "ok" : outcome.Reason)}{verdict}\n\n{outcome.FinalText}";
+    private static string Format(SpawnOutcome o)
+    {
+        var verdict = o.Verdict == Verdict.Skipped ? "" : $" [review: {o.Verdict} {o.Confidence:0.00}]";
+        return $"job={o.JobId} status={(o.Ok ? "ok" : o.Reason)}{verdict}\n{o.FinalText}";
     }
 
     [McpServerTool(Name = "get_job_result")]

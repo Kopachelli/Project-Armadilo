@@ -49,6 +49,36 @@ public sealed record ReviewRecord
     public DateTimeOffset At { get; init; }
 }
 
+/// <summary>
+/// A versioned persona/system-prompt template — the unit the brain self-improves (procedural memory).
+/// Exactly one version per name is <see cref="Active"/>.
+/// </summary>
+public sealed record PlaybookRecord
+{
+    public required string Name { get; init; }
+    public int Version { get; init; }
+    public required string Text { get; init; }
+    public double Score { get; init; }
+    public bool Active { get; init; }
+    public string? SourceNote { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+}
+
+/// <summary>A recorded A/B comparison between an incumbent and a candidate playbook version.</summary>
+public sealed record ExperimentRecord
+{
+    public required string ExperimentId { get; init; }
+    public required string PlaybookName { get; init; }
+    public int IncumbentVersion { get; init; }
+    public int CandidateVersion { get; init; }
+    public double IncumbentScore { get; init; }
+    public double CandidateScore { get; init; }
+    public int SampleSize { get; init; }
+    public string Outcome { get; init; } = "";   // promoted | rejected | staged | rolledback | halted
+    public string Detail { get; init; } = "";
+    public DateTimeOffset At { get; init; }
+}
+
 /// <summary>A distilled, reusable learning captured from a reviewed run (the brain's semantic memory).</summary>
 public sealed record LearningRecord
 {

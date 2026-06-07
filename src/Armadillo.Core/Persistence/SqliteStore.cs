@@ -49,8 +49,105 @@ public sealed class SqliteStore : IStore
             CREATE TABLE IF NOT EXISTS audit (
               audit_id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, actor TEXT,
               action TEXT, target TEXT, detail_json TEXT);
+
+            CREATE TABLE IF NOT EXISTS playbooks (
+              name TEXT NOT NULL, version INTEGER NOT NULL, text TEXT NOT NULL, score REAL,
+              active INTEGER NOT NULL DEFAULT 0, source_note TEXT, created_at TEXT NOT NULL,
+              PRIMARY KEY(name, version));
+
+            CREATE TABLE IF NOT EXISTS experiments (
+              experiment_id TEXT PRIMARY KEY, playbook_name TEXT, incumbent_version INTEGER,
+              candidate_version INTEGER, incumbent_score REAL, candidate_score REAL, sample_size INTEGER,
+              outcome TEXT, detail TEXT, at TEXT NOT NULL);
+
+            CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             """);
     }
+
+    public void SavePlaybook(PlaybookRecord p) => Write(cmd =>
+    {
+        cmd.CommandText = """
+            INSERT INTO playbooks (name,version,text,score,active,source_note,created_at)
+            VALUES ($n,$v,$t,$s,$a,$src,$created)
+            ON CONFLICT(name,version) DO UPDATE SET text=$t, score=$s, active=$a, source_note=$src;
+            """;
+        cmd.P("$n", p.Name); cmd.P("$v", p.Version); cmd.P("$t", p.Text); cmd.P("$s", p.Score);
+        cmd.P("$a", p.Active ? 1 : 0); cmd.P("$src", p.SourceNote); cmd.P("$created", Iso(p.CreatedAt));
+    });
+
+    public PlaybookRecord? GetActivePlaybook(string name)
+    {
+        lock (_writeLock)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT * FROM playbooks WHERE name=$n AND active=1 LIMIT 1;";
+            cmd.P("$n", name);
+            using var r = cmd.ExecuteReader();
+            return r.Read() ? ReadPlaybook(r) : null;
+        }
+    }
+
+    public IReadOnlyList<PlaybookRecord> GetPlaybookVersions(string name)
+    {
+        lock (_writeLock)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT * FROM playbooks WHERE name=$n ORDER BY version;";
+            cmd.P("$n", name);
+            var list = new List<PlaybookRecord>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) list.Add(ReadPlaybook(r));
+            return list;
+        }
+    }
+
+    public void SetActivePlaybook(string name, int version) => Write(cmd =>
+    {
+        cmd.CommandText = "UPDATE playbooks SET active=0 WHERE name=$n; " +
+                          "UPDATE playbooks SET active=1 WHERE name=$n AND version=$v;";
+        cmd.P("$n", name); cmd.P("$v", version);
+    });
+
+    public void SaveExperiment(ExperimentRecord e) => Write(cmd =>
+    {
+        cmd.CommandText = """
+            INSERT INTO experiments (experiment_id,playbook_name,incumbent_version,candidate_version,
+              incumbent_score,candidate_score,sample_size,outcome,detail,at)
+            VALUES ($id,$n,$iv,$cv,$is,$cs,$ss,$o,$d,$at);
+            """;
+        cmd.P("$id", e.ExperimentId); cmd.P("$n", e.PlaybookName); cmd.P("$iv", e.IncumbentVersion);
+        cmd.P("$cv", e.CandidateVersion); cmd.P("$is", e.IncumbentScore); cmd.P("$cs", e.CandidateScore);
+        cmd.P("$ss", e.SampleSize); cmd.P("$o", e.Outcome); cmd.P("$d", e.Detail); cmd.P("$at", Iso(e.At));
+    });
+
+    public void SetSetting(string key, string value) => Write(cmd =>
+    {
+        cmd.CommandText = "INSERT INTO settings (key,value) VALUES ($k,$v) " +
+                          "ON CONFLICT(key) DO UPDATE SET value=$v;";
+        cmd.P("$k", key); cmd.P("$v", value);
+    });
+
+    public string? GetSetting(string key)
+    {
+        lock (_writeLock)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT value FROM settings WHERE key=$k;";
+            cmd.P("$k", key);
+            return cmd.ExecuteScalar() as string;
+        }
+    }
+
+    private static PlaybookRecord ReadPlaybook(SqliteDataReader r) => new()
+    {
+        Name = (string)r["name"],
+        Version = Convert.ToInt32(r["version"]),
+        Text = (string)r["text"],
+        Score = r["score"] is double d ? d : 0,
+        Active = Convert.ToInt64(r["active"]) == 1,
+        SourceNote = r["source_note"] as string,
+        CreatedAt = DateTimeOffset.Parse((string)r["created_at"]),
+    };
 
     public void SaveJob(JobRecord j) => Write(cmd =>
     {

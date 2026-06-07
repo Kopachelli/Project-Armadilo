@@ -1,4 +1,5 @@
 using Armadillo.Core;
+using Armadillo.Core.Brain;
 using Armadillo.Core.Orchestration;
 using Armadillo.Core.Tools;
 using Armadillo.Detection;
@@ -15,6 +16,12 @@ switch (command)
         return await ServeAsync(args);
     case "run":
         return await RunAsync(args);
+    case "improve":
+        return await ImproveAsync(args);
+    case "playbooks":
+        return Playbooks(args);
+    case "kill-switch":
+        return KillSwitch(args);
     default:
         PrintHelp();
         return command is "help" or "-h" or "--help" ? 0 : 1;
@@ -121,28 +128,101 @@ static async Task<int> RunAsync(string[] args)
         return 2;
     }
 
+    int timeoutSec = int.TryParse(opts.Get("timeout"), out var ts) ? ts : 600;
+    int count = int.TryParse(opts.Get("count"), out var c) ? c : 1;
+
     using var reg = Registrator.Create(new RegistratorOptions
     {
         ReviewModel = opts.Get("review-model"),
         EmbedModel = opts.Get("embed-model"),
     }, log: line => Console.Error.WriteLine(line));
 
-    var outcome = await reg.Dispatcher.DispatchAsync(new SpawnRequest
+    var req = new SpawnRequest
     {
         Persona = opts.Get("persona") ?? "You are a focused helper agent. Complete the task directly.",
         Task = task,
         Tool = tool,
-    });
+        Timeout = TimeSpan.FromSeconds(timeoutSec),
+    };
+
+    var outcomes = count > 1
+        ? await reg.Dispatcher.DispatchManyAsync(req, count)
+        : new[] { await reg.Dispatcher.DispatchAsync(req) };
+
+    foreach (var outcome in outcomes)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"job:      {outcome.JobId}");
+        Console.WriteLine($"session:  {outcome.SessionId}");
+        Console.WriteLine($"status:   {(outcome.Ok ? "ok" : "not-ok")} ({outcome.Reason})");
+        Console.WriteLine($"review:   {outcome.Verdict} ({outcome.Confidence:0.00})");
+        Console.WriteLine($"tokens:   in={outcome.InputTokens} out={outcome.OutputTokens}");
+        Console.WriteLine("--- result ---");
+        Console.WriteLine(outcome.FinalText);
+    }
+    return outcomes.All(o => o.Ok) ? 0 : 1;
+}
+
+static async Task<int> ImproveAsync(string[] args)
+{
+    var opts = ParseFlags(args);
+    var name = opts.Positional ?? "default-helper";
+    var seed = opts.Get("seed") ?? "You are a focused helper agent. Complete the task directly and concisely.";
+    var tasks = (opts.Get("tasks") ?? "").Split("||", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    if (tasks.Length == 0)
+    {
+        Console.Error.WriteLine("usage: armadillo improve <playbook> --tasks \"task1||task2\" [--seed \"...\"] [--improve-model M] [--review-model M]");
+        return 2;
+    }
+
+    using var reg = Registrator.Create(new RegistratorOptions
+    {
+        ReviewModel = opts.Get("review-model"),
+        ImproveModel = opts.Get("improve-model") ?? opts.Get("review-model"),
+        EmbedModel = opts.Get("embed-model"),
+    }, log: line => Console.Error.WriteLine(line));
+
+    Console.WriteLine($"Running self-improvement cycle for '{name}' over {tasks.Length} eval task(s)…");
+    var decision = await reg.Improvement.RunCycleAsync(name, seed, tasks);
 
     Console.WriteLine();
-    Console.WriteLine($"job:      {outcome.JobId}");
-    Console.WriteLine($"session:  {outcome.SessionId}");
-    Console.WriteLine($"status:   {(outcome.Ok ? "ok" : "not-ok")} ({outcome.Reason})");
-    Console.WriteLine($"review:   {outcome.Verdict} ({outcome.Confidence:0.00})");
-    Console.WriteLine($"tokens:   in={outcome.InputTokens} out={outcome.OutputTokens}");
-    Console.WriteLine("--- result ---");
-    Console.WriteLine(outcome.FinalText);
-    return outcome.Ok ? 0 : 1;
+    Console.WriteLine($"outcome:        {decision.Outcome}");
+    Console.WriteLine($"active version: {decision.ActiveVersion}");
+    Console.WriteLine($"detail:         {decision.Detail}");
+    return 0;
+}
+
+static int Playbooks(string[] args)
+{
+    var opts = ParseFlags(args);
+    using var reg = Registrator.Create();
+    var name = opts.Positional;
+    if (name is null)
+    {
+        Console.Error.WriteLine("usage: armadillo playbooks <name>");
+        return 2;
+    }
+    var versions = reg.Store.GetPlaybookVersions(name);
+    if (versions.Count == 0) { Console.WriteLine($"no playbook versions for '{name}'."); return 0; }
+    foreach (var v in versions)
+    {
+        var mark = v.Active ? "* " : "  ";
+        Console.WriteLine($"{mark}v{v.Version}  score={v.Score:0.00}  {v.SourceNote}  ({v.CreatedAt:u})");
+    }
+    return 0;
+}
+
+static int KillSwitch(string[] args)
+{
+    var sub = args.Length > 1 ? args[1].ToLowerInvariant() : "status";
+    using var reg = Registrator.Create();
+    switch (sub)
+    {
+        case "on": reg.Improvement.SetKillSwitch(true); Console.WriteLine("kill switch ENGAGED — self-modification halted."); break;
+        case "off": reg.Improvement.SetKillSwitch(false); Console.WriteLine("kill switch released — self-modification allowed."); break;
+        default: Console.WriteLine($"kill switch: {(reg.Improvement.KillSwitchEngaged ? "ENGAGED" : "off")}"); break;
+    }
+    return 0;
 }
 
 static FlagSet ParseFlags(string[] args)
@@ -174,10 +254,13 @@ static void PrintHelp()
         Usage: armadillo <command>
 
         Commands:
-          doctor    Detect installed AI CLI tools + local model runtimes (capability matrix)
-          serve     Run the Registrator daemon + MCP server   (Phase 1)
-          run       Spawn and capture a single headless session (Phase 1)
-          help      Show this help
+          doctor        Detect installed AI CLI tools + local model runtimes (capability matrix)
+          serve         Run the Registrator daemon + MCP server
+          run           Spawn headless session(s): run "<task>" [--tool T] [--count N] [--review-model M]
+          improve       Self-improvement cycle: improve <playbook> --tasks "a||b" [--review-model M]
+          playbooks     List versions of a playbook: playbooks <name>
+          kill-switch   Halt/allow self-modification: kill-switch <on|off|status>
+          help          Show this help
         """);
 }
 

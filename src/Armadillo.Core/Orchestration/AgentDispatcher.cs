@@ -52,13 +52,14 @@ public sealed class AgentDispatcher
     private readonly IReviewer _reviewer;
     private readonly IGovernor _governor;
     private readonly IPathProvider _paths;
+    private readonly IRouter? _router;
     private readonly McpEndpoint? _mcp;
     private readonly Action<string>? _log;
 
     public AgentDispatcher(
         AdapterRegistry adapters, IToolDetector detector, IProcessRunner runner, IStore store,
         IBrain brain, IReviewer reviewer, IGovernor governor, IPathProvider paths,
-        McpEndpoint? mcp = null, Action<string>? log = null)
+        IRouter? router = null, McpEndpoint? mcp = null, Action<string>? log = null)
     {
         _adapters = adapters;
         _detector = detector;
@@ -68,8 +69,24 @@ public sealed class AgentDispatcher
         _reviewer = reviewer;
         _governor = governor;
         _paths = paths;
+        _router = router;
         _mcp = mcp;
         _log = log;
+    }
+
+    /// <summary>Fan out: run <paramref name="count"/> sibling sessions concurrently (bounded), aggregate.</summary>
+    public async Task<IReadOnlyList<SpawnOutcome>> DispatchManyAsync(SpawnRequest req, int count,
+        int maxParallel = 3, CancellationToken ct = default)
+    {
+        count = Math.Clamp(count, 1, 16);
+        using var gate = new SemaphoreSlim(Math.Clamp(maxParallel, 1, count));
+        var tasks = Enumerable.Range(0, count).Select(async _ =>
+        {
+            await gate.WaitAsync(ct).ConfigureAwait(false);
+            try { return await DispatchAsync(req, ct).ConfigureAwait(false); }
+            finally { gate.Release(); }
+        });
+        return await Task.WhenAll(tasks).ConfigureAwait(false);
     }
 
     public async Task<SpawnOutcome> DispatchAsync(SpawnRequest req, CancellationToken ct = default)
@@ -89,21 +106,31 @@ public sealed class AgentDispatcher
         using var _ = release;
         try
         {
-            // 2. Persist the job.
-            var job = new JobRecord
+            // 2. Resolve the tool (route to an installed alternative if needed).
+            var tool = req.Tool;
+            if (_router is not null)
             {
-                JobId = jobId, ParentJobId = req.ParentJobId, RequesterSession = req.RequesterSession,
-                RootId = req.Lineage.RootId, Depth = req.Lineage.Depth, Persona = req.Persona,
-                Task = req.Task, Tool = req.Tool, State = JobState.Received, CreatedAt = now, UpdatedAt = now,
-            };
-            _store.SaveJob(job);
+                var routed = await _router.ChooseAsync(req.Tool, ct).ConfigureAwait(false);
+                if (routed is null)
+                {
+                    var none = NewJob(jobId, req, req.Tool, now);
+                    _store.SaveJob(none);
+                    return Fail(none, "no installed tool available to run this request");
+                }
+                tool = routed.Value;
+            }
 
-            // 3. Resolve the tool.
-            if (!_adapters.Supports(req.Tool))
+            // 3. Persist the job (with the chosen tool).
+            var job = NewJob(jobId, req, tool, now);
+            _store.SaveJob(job);
+            if (tool != req.Tool)
+                _store.Audit("router", "rerouted", jobId, $"{req.Tool} -> {tool}");
+
+            if (!_adapters.Supports(tool))
                 return Fail(job, "no adapter registered for tool");
-            var detected = await _detector.DetectAsync(req.Tool, ct).ConfigureAwait(false);
+            var detected = await _detector.DetectAsync(tool, ct).ConfigureAwait(false);
             if (!detected.Installed || detected.ExecutablePath is null)
-                return Fail(job, $"{req.Tool} is not installed on this machine");
+                return Fail(job, $"{tool} is not installed on this machine");
 
             // 4. Brain: retrieve relevant prior learnings, fold into the persona.
             var context = await _brain.RetrieveContextAsync(req.Persona, req.Task, ct: ct).ConfigureAwait(false);
@@ -133,7 +160,7 @@ public sealed class AgentDispatcher
                 },
             };
 
-            var adapter = _adapters.Get(req.Tool);
+            var adapter = _adapters.Get(tool);
             var spec = adapter.BuildRunSpec(brief, detected.ExecutablePath);
             await File.WriteAllTextAsync(Path.Combine(sessionDir, "brief.json"),
                 System.Text.Json.JsonSerializer.Serialize(new { req.Persona, req.Task, req.Tool, brief.Provider }),
@@ -141,7 +168,7 @@ public sealed class AgentDispatcher
 
             job = job with { State = JobState.Spawning, UpdatedAt = DateTimeOffset.UtcNow };
             _store.SaveJob(job);
-            _log?.Invoke($"[dispatch] {jobId} -> spawning {req.Tool} (depth {childLineage.Depth})");
+            _log?.Invoke($"[dispatch] {jobId} -> spawning {tool} (depth {childLineage.Depth})");
 
             // 6. Run + capture.
             var startedAt = DateTimeOffset.UtcNow;
@@ -157,7 +184,7 @@ public sealed class AgentDispatcher
 
             var session = new SessionRecord
             {
-                SessionId = sessionId, JobId = jobId, Tool = req.Tool, Model = parsed.Model,
+                SessionId = sessionId, JobId = jobId, Tool = tool, Model = parsed.Model,
                 ProviderSessionId = parsed.SessionId,
                 ExitReason = result.TimedOut ? "timeout" : result.Killed ? "killed" : parsed.IsError ? "error" : "completed",
                 InputTokens = parsed.Usage.InputTokens, OutputTokens = parsed.Usage.OutputTokens,
@@ -189,7 +216,7 @@ public sealed class AgentDispatcher
             job = job with { State = JobState.Returned, UpdatedAt = DateTimeOffset.UtcNow };
             _store.SaveJob(job);
             _store.Audit("dispatcher", "completed", jobId,
-                $"tool={req.Tool};exit={session.ExitReason};verdict={review.Verdict};in={session.InputTokens};out={session.OutputTokens}");
+                $"tool={tool};exit={session.ExitReason};verdict={review.Verdict};in={session.InputTokens};out={session.OutputTokens}");
 
             _log?.Invoke($"[dispatch] {jobId} done: {session.ExitReason}, review={review.Verdict} ({review.Confidence:0.00})");
 
@@ -239,6 +266,13 @@ public sealed class AgentDispatcher
             new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
         return path;
     }
+
+    private static JobRecord NewJob(string jobId, SpawnRequest req, ToolId tool, DateTimeOffset now) => new()
+    {
+        JobId = jobId, ParentJobId = req.ParentJobId, RequesterSession = req.RequesterSession,
+        RootId = req.Lineage.RootId, Depth = req.Lineage.Depth, Persona = req.Persona,
+        Task = req.Task, Tool = tool, State = JobState.Received, CreatedAt = now, UpdatedAt = now,
+    };
 
     private SpawnOutcome Fail(JobRecord job, string reason)
     {

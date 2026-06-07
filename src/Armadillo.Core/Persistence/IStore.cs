@@ -22,4 +22,18 @@ public interface IStore : IDisposable
     void SaveCapabilitySnapshot(DateTimeOffset takenAt, string json);
 
     void Audit(string actor, string action, string target, string? detailJson = null);
+
+    // --- self-improvement (Phase 4) ---
+
+    /// <summary>Insert a new playbook version. Set <c>active</c> separately via <see cref="SetActivePlaybook"/>.</summary>
+    void SavePlaybook(PlaybookRecord playbook);
+    PlaybookRecord? GetActivePlaybook(string name);
+    IReadOnlyList<PlaybookRecord> GetPlaybookVersions(string name);
+    void SetActivePlaybook(string name, int version);
+
+    void SaveExperiment(ExperimentRecord experiment);
+
+    /// <summary>Tiny key/value settings store (kill switch, autonomy level, …).</summary>
+    void SetSetting(string key, string value);
+    string? GetSetting(string key);
 }

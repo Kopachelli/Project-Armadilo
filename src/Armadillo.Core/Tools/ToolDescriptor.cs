@@ -56,7 +56,7 @@ public sealed record ToolDescriptor(
             Notes: "codex exec --json --full-auto; MCP via config.toml; NO hooks."),
 
         new ToolDescriptor(ToolId.Cursor, "Cursor",
-            ExecutableNames: new[] { "cursor-agent", "cursor" },
+            ExecutableNames: new[] { "cursor-agent" }, // the headless agent, NOT the `cursor` IDE launcher
             DotFolders: new[] { ".cursor" },
             Family: AdapterFamily.Generic,
             Capabilities: Cli | ToolCapabilities.Resume | ToolCapabilities.Acp,
