@@ -20,6 +20,9 @@
     <UseWPF>true</UseWPF>
     <RootNamespace>Armadillo.App</RootNamespace>
     <AssemblyName>Armadillo</AssemblyName>
+    <!-- WPF data binding needs real culture data; the repo-wide InvariantGlobalization breaks it
+         ("Cannot find non-neutral culture related to 'en-us'"). Override it off for the GUI. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
     <Product>Armadillo</Product>
     <Company>Armadillo</Company>
     <Version>0.1.0</Version>
