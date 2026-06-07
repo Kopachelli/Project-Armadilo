@@ -13,7 +13,8 @@ public sealed record SpawnRequest
 {
     public required string Persona { get; init; }
     public required string Task { get; init; }
-    public ToolId Tool { get; init; } = ToolId.Claude;
+    /// <summary>Preferred tool, or null to let the Router pick (learned priors → static priority).</summary>
+    public ToolId? Tool { get; init; }
     public SpawnLineage Lineage { get; init; } = SpawnLineage.NewRoot();
     public ProviderProfile Provider { get; init; } = ProviderProfile.Inherit;
     public string? RequesterSession { get; init; }
@@ -113,25 +114,31 @@ public sealed class AgentDispatcher
         using var _ = release;
         try
         {
-            // 2. Resolve the tool (route to an installed alternative if needed).
-            var tool = req.Tool;
+            // 2. Resolve the tool: explicit if available, else learned routing (Router). null = auto.
+            ToolId tool;
             if (_router is not null)
             {
                 var routed = await _router.ChooseAsync(req.Tool, ct).ConfigureAwait(false);
                 if (routed is null)
                 {
-                    var none = NewJob(jobId, req, req.Tool, now);
+                    var none = NewJob(jobId, req, req.Tool ?? ToolId.Claude, now);
                     _store.SaveJob(none);
                     return Fail(none, "no installed tool available to run this request");
                 }
                 tool = routed.Value;
             }
+            else
+            {
+                tool = req.Tool ?? ToolId.Claude;
+            }
 
             // 3. Persist the job (with the chosen tool).
             var job = NewJob(jobId, req, tool, now);
             _store.SaveJob(job);
-            if (tool != req.Tool)
-                _store.Audit("router", "rerouted", jobId, $"{req.Tool} -> {tool}");
+            if (req.Tool is { } requested && requested != tool)
+                _store.Audit("router", "rerouted", jobId, $"{requested} -> {tool}");
+            else if (req.Tool is null)
+                _store.Audit("router", "auto-routed", jobId, $"-> {tool}");
 
             if (!_adapters.Supports(tool))
                 return Fail(job, "no adapter registered for tool");

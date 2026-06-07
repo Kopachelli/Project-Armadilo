@@ -135,11 +135,16 @@ static async Task<int> RunAsync(string[] args)
         return 2;
     }
 
-    var toolName = opts.Get("tool") ?? "claude";
-    if (!Enum.TryParse<ToolId>(toolName, ignoreCase: true, out var tool))
+    ToolId? tool = null;
+    var toolName = opts.Get("tool");
+    if (toolName is not null)
     {
-        Console.Error.WriteLine($"unknown tool '{toolName}'. Supported in v1: claude.");
-        return 2;
+        if (!Enum.TryParse<ToolId>(toolName, ignoreCase: true, out var t))
+        {
+            Console.Error.WriteLine($"unknown tool '{toolName}'.");
+            return 2;
+        }
+        tool = t;
     }
 
     int timeoutSec = int.TryParse(opts.Get("timeout"), out var ts) ? ts : 600;

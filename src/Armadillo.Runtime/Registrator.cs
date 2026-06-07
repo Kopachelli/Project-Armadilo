@@ -82,7 +82,7 @@ public sealed class Registrator : IDisposable
             new OllamaCliAdapter(),
         });
         var mcpEndpoint = new McpEndpoint();
-        var router = new Router(detector, adapters);
+        var router = new Router(detector, adapters, store);
         var worktrees = new WorktreeManager(runner);
 
         var dispatcher = new AgentDispatcher(adapters, detector, runner, store, brain, reviewer,

@@ -4,6 +4,9 @@ namespace Armadillo.Core.Persistence;
 
 public enum JobState { Received, Routed, Spawning, Supervised, Completed, Reviewed, Returned, Failed }
 
+/// <summary>A learned quality prior for a tool, distilled from past reviewed sessions. Feeds the Router.</summary>
+public sealed record ToolPrior(Armadillo.Core.Tools.ToolId Tool, double Score, int Samples);
+
 /// <summary>One inbound request (e.g. an MCP <c>request_agent</c> call). May own N sessions.</summary>
 public sealed record JobRecord
 {

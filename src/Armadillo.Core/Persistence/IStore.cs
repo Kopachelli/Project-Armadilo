@@ -29,6 +29,9 @@ public interface IStore : IDisposable
     /// <summary>Most recent sessions (for dashboards/activity views).</summary>
     IReadOnlyList<SessionRecord> RecentSessions(int n);
 
+    /// <summary>Per-tool quality priors from past reviewed sessions (approve-weighted). Feeds learned routing.</summary>
+    IReadOnlyList<ToolPrior> ToolPriors();
+
     // --- self-improvement (Phase 4) ---
 
     /// <summary>Insert a new playbook version. Set <c>active</c> separately via <see cref="SetActivePlaybook"/>.</summary>

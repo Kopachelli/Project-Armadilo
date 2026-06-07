@@ -46,7 +46,7 @@ public sealed class RegistratorTools
     public async Task<string> RequestAgent(
         [Description("The self-contained task for the sub-agent(s) to complete.")] string task,
         [Description("Optional persona/system instructions for the sub-agent(s).")] string? persona = null,
-        [Description("Optional tool to use (e.g. 'claude','cursor','gemini'). Defaults to the best available.")] string? tool = null,
+        [Description("Optional tool (e.g. 'claude','cursor','gemini'). Omit to let the harness pick the best (learned routing).")] string? tool = null,
         [Description("How many independent agents to run on this task (1-8). Default 1.")] int count = 1,
         CancellationToken ct = default)
     {
@@ -123,6 +123,6 @@ public sealed class RegistratorTools
         return SpawnLineage.NewRoot();
     }
 
-    private static ToolId ParseTool(string? tool)
-        => tool is not null && Enum.TryParse<ToolId>(tool, ignoreCase: true, out var t) ? t : ToolId.Claude;
+    private static ToolId? ParseTool(string? tool)
+        => tool is not null && Enum.TryParse<ToolId>(tool, ignoreCase: true, out var t) ? t : (ToolId?)null;
 }

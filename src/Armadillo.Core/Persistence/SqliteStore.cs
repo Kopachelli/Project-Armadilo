@@ -290,6 +290,33 @@ public sealed class SqliteStore : IStore
         }
     }
 
+    public IReadOnlyList<ToolPrior> ToolPriors()
+    {
+        lock (_writeLock)
+        {
+            using var cmd = _conn.CreateCommand();
+            // Approve-weighted quality score per tool over reviewed sessions.
+            cmd.CommandText = """
+                SELECT s.tool AS tool,
+                       AVG(CASE r.verdict WHEN 'approve' THEN r.confidence
+                                          WHEN 'revise'  THEN r.confidence * 0.5
+                                          ELSE 0 END) AS score,
+                       COUNT(*) AS n
+                FROM sessions s JOIN reviews r ON r.session_id = s.session_id
+                WHERE r.verdict <> 'skipped'
+                GROUP BY s.tool;
+                """;
+            var list = new List<ToolPrior>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                if (!Enum.TryParse<ToolId>((string)r["tool"], out var tool)) continue;
+                list.Add(new ToolPrior(tool, r["score"] is double d ? d : 0, Convert.ToInt32(r["n"])));
+            }
+            return list;
+        }
+    }
+
     private static IReadOnlyList<LearningRecord> ReadLearnings(SqliteCommand cmd)
     {
         var list = new List<LearningRecord>();
