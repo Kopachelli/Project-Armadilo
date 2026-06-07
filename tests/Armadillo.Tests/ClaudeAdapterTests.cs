@@ -34,6 +34,23 @@ public class ClaudeAdapterTests
     }
 
     [Fact]
+    public void Ollama_adapter_strips_ansi_spinner_codes()
+    {
+        var result = new RunResult { ExitCode = 0, Stdout = "hello\x1b[1D\x1b[Kworld", Stderr = "" };
+        var parsed = new OllamaCliAdapter().Parse(result);
+        Assert.Equal("helloworld", parsed.FinalText);
+    }
+
+    [Fact]
+    public void Ollama_adapter_runs_model_with_stdin_task()
+    {
+        var brief = new AgentBrief { Persona = "", Task = "hi", Provider = new Armadillo.Core.Providers.ProviderProfile("m", Armadillo.Core.Providers.ProviderKind.Local, Model: "qwen2.5-coder:7b") };
+        var spec = new OllamaCliAdapter().BuildRunSpec(brief, @"C:\bin\ollama.exe");
+        Assert.Equal(new[] { "run", "qwen2.5-coder:7b" }, spec.Arguments);
+        Assert.Equal("hi", spec.StdinText);
+    }
+
+    [Fact]
     public void Builds_run_spec_with_stdin_task_and_stream_json_flags()
     {
         var brief = new AgentBrief { Persona = "be terse", Task = "do the thing" };

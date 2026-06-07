@@ -55,3 +55,36 @@ public sealed class MiniMaxAdapter : CliAdapterBase
     public override ToolId Id => ToolId.MiniMax;
     public override AdapterResult Parse(RunResult result) => TextFallback(result);
 }
+
+/// <summary>
+/// Drives a LOCAL Ollama model as a chain/agent participant via <c>ollama run &lt;model&gt;</c> (task on
+/// stdin). Free + private — useful as a no-cost second engine in cross-tool chains. Model comes from
+/// ProviderProfile.Model, else ARMADILLO_OLLAMA_MODEL, else a sensible default.
+/// </summary>
+public sealed class OllamaCliAdapter : CliAdapterBase
+{
+    public override ToolId Id => ToolId.Ollama;
+
+    public override RunSpec BuildRunSpec(AgentBrief brief, string executablePath)
+    {
+        var model = !string.IsNullOrWhiteSpace(brief.Provider.Model)
+            ? brief.Provider.Model!
+            : Environment.GetEnvironmentVariable("ARMADILLO_OLLAMA_MODEL") ?? "qwen2.5-coder:7b";
+        return new RunSpec
+        {
+            FilePath = executablePath,
+            Arguments = new[] { "run", model },
+            StdinText = ComposeStdin(brief),
+            WorkingDirectory = brief.WorkingDirectory,
+            Environment = MergeEnv(brief),
+            Timeout = brief.Timeout,
+        };
+    }
+
+    // Ollama's CLI renders a streaming spinner with ANSI cursor/erase codes even when piped — strip them.
+    private static readonly System.Text.RegularExpressions.Regex Ansi =
+        new(@"\x1B\[[0-9;?]*[ -/]*[@-~]", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    public override AdapterResult Parse(RunResult result)
+        => TextFallback(result with { Stdout = Ansi.Replace(result.Stdout, "") });
+}

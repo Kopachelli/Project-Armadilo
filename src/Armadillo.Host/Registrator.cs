@@ -79,6 +79,7 @@ public sealed class Registrator : IDisposable
             new OpenClawAdapter(),
             new KimiAdapter(),
             new MiniMaxAdapter(),
+            new OllamaCliAdapter(),
         });
         var mcpEndpoint = new McpEndpoint();
         var router = new Router(detector, adapters);
