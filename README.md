@@ -3,9 +3,9 @@
 A local, privacy-first **self-learning AI core + CLI-agent orchestration harness** for Windows.
 
 A running AI session (Claude Code, Codex, Cursor, Gemini, Qwen, GitHub Copilot, Pi, OpenCode, OpenClaw,
-Hermes, Google Antigravity, z.ai/GLM…) that hits a sub-problem can **"call the administrator"** — the
-Registrator detects what's installed (CLIs, local runtimes, and even desktop apps it reports but won't
-drive), spawns the
+Hermes, Google Antigravity, Kimi, MiniMax, z.ai/GLM…) that hits a sub-problem can **"call the
+administrator"** — the Registrator detects what's installed (CLIs, local runtimes, and — via a Windows
+registry scan — desktop apps it reports but won't drive), spawns the
 right headless agent(s), **captures and reviews everything** (locally, to save tokens), **learns**
 from each run, and returns the result. It works with **one** tool or **many**, on the same or
 different tasks. Local now; cloud later. Protocol-, tool-, and provider-agnostic by design.

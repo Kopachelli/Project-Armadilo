@@ -41,3 +41,17 @@ public sealed class OpenClawAdapter : CliAdapterBase
 
     public override AdapterResult Parse(RunResult result) => TextFallback(result);
 }
+
+/// <summary>Moonshot Kimi Code CLI. Task via stdin; text fallback. Verify invocation against the binary.</summary>
+public sealed class KimiAdapter : CliAdapterBase
+{
+    public override ToolId Id => ToolId.Kimi;
+    public override AdapterResult Parse(RunResult result) => TextFallback(result);
+}
+
+/// <summary>MiniMax MMX-CLI. Task via stdin; text fallback. Verify invocation against the binary.</summary>
+public sealed class MiniMaxAdapter : CliAdapterBase
+{
+    public override ToolId Id => ToolId.MiniMax;
+    public override AdapterResult Parse(RunResult result) => TextFallback(result);
+}

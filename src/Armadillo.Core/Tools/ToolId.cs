@@ -18,6 +18,8 @@ public enum ToolId
     OpenClaw,
     Hermes,
     Antigravity,
+    Kimi,
+    MiniMax,
     Zai,
 
     // Local model runtime
@@ -28,4 +30,10 @@ public enum ToolId
     CodexApp,
     HermesDesktop,
     ClaudeDesktop,
+    CursorDesktop,
+    QwenDesktop,
+    KimiDesktop,
+    MiniMaxDesktop,
+    OpenCodeDesktop,
+    AntigravityApp,
 }

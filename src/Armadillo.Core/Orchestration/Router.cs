@@ -19,7 +19,8 @@ public sealed class Router : IRouter
     private static readonly ToolId[] Priority =
     {
         ToolId.Claude, ToolId.Cursor, ToolId.Codex, ToolId.Antigravity, ToolId.Gemini,
-        ToolId.Qwen, ToolId.Copilot, ToolId.OpenCode, ToolId.Hermes, ToolId.OpenClaw, ToolId.Pi,
+        ToolId.Qwen, ToolId.Kimi, ToolId.MiniMax, ToolId.Copilot, ToolId.OpenCode,
+        ToolId.Hermes, ToolId.OpenClaw, ToolId.Pi,
     };
 
     private readonly IToolDetector _detector;

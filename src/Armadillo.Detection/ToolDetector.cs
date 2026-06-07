@@ -19,32 +19,42 @@ public sealed class ToolDetector : IToolDetector
 
     public async Task<CapabilitySnapshot> DetectAsync(CancellationToken ct = default)
     {
-        var tools = await Task.WhenAll(ToolDescriptor.All.Select(d => DetectAsync(d, ct))).ConfigureAwait(false);
+        var installedApps = WindowsInstalledApps.Scan();
+        var tools = await Task.WhenAll(ToolDescriptor.All.Select(d => DetectAsync(d, installedApps, ct)))
+            .ConfigureAwait(false);
         return new CapabilitySnapshot(DateTimeOffset.UtcNow, tools);
     }
 
     public Task<DetectedTool> DetectAsync(ToolId id, CancellationToken ct = default)
-        => DetectAsync(ToolDescriptor.For(id), ct);
+        => DetectAsync(ToolDescriptor.For(id), WindowsInstalledApps.Scan(), ct);
 
-    private async Task<DetectedTool> DetectAsync(ToolDescriptor d, CancellationToken ct)
+    private async Task<DetectedTool> DetectAsync(ToolDescriptor d, IReadOnlyList<InstalledApp> installedApps,
+        CancellationToken ct)
     {
         try
         {
             var signals = new List<string>();
 
-            // Desktop GUIs are found by install path, NOT PATH (so a GUI isn't confused with a same-named CLI).
+            // Desktop GUIs: match the installed-apps registry by display name; fall back to known install paths.
             if (d.Kind == ToolKind.Desktop)
             {
+                var hit = WindowsInstalledApps.Match(installedApps, d.AppNamePatterns);
+                if (hit is not null)
+                {
+                    return DetectedTool.NotFound(d) with
+                    {
+                        Installed = true,
+                        ExecutablePath = hit.InstallLocation ?? hit.DisplayIcon,
+                        Version = hit.DisplayName,
+                        Signals = new[] { $"installed:{hit.DisplayName}" },
+                    };
+                }
                 foreach (var raw in d.AppPaths)
                 {
                     var path = Environment.ExpandEnvironmentVariables(raw);
                     if (File.Exists(path))
-                    {
                         return DetectedTool.NotFound(d) with
-                        {
-                            Installed = true, ExecutablePath = path, Signals = new[] { $"app:{path}" },
-                        };
-                    }
+                        { Installed = true, ExecutablePath = path, Signals = new[] { $"app:{path}" } };
                 }
                 return DetectedTool.NotFound(d);
             }

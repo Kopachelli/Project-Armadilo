@@ -23,7 +23,7 @@ public class ToolCatalogTests
         var d = ToolDescriptor.For(id);
         Assert.Equal(ToolKind.Desktop, d.Kind);
         Assert.False(d.Drivable);
-        Assert.NotEmpty(d.AppPaths);          // detected by install path…
+        Assert.NotEmpty(d.AppNamePatterns);   // detected by registry display-name match…
         Assert.Empty(d.ExecutableNames);      // …never by a PATH name that could collide with a CLI
     }
 

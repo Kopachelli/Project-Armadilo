@@ -45,9 +45,12 @@ public sealed record ToolDescriptor(
     /// <summary>CLI / Runtime / Desktop. Defaults to CLI.</summary>
     public ToolKind Kind { get; init; } = ToolKind.Cli;
 
-    /// <summary>For desktop apps: candidate install paths (env vars expanded) checked instead of PATH,
-    /// so a GUI app isn't confused with a same-named CLI binary.</summary>
+    /// <summary>For desktop apps: candidate install paths (env vars expanded) checked as a fallback.</summary>
     public IReadOnlyList<string> AppPaths { get; init; } = Array.Empty<string>();
+
+    /// <summary>For desktop apps: substrings matched against installed-app display names (registry scan).
+    /// The primary, reliable way to detect a GUI without guessing exe paths or colliding with a CLI.</summary>
+    public IReadOnlyList<string> AppNamePatterns { get; init; } = Array.Empty<string>();
 
     /// <summary>Whether the harness can spawn + orchestrate it headlessly (everything but desktop GUIs).</summary>
     public bool Drivable => Kind != ToolKind.Desktop;
@@ -159,6 +162,24 @@ public sealed record ToolDescriptor(
             McpConfigHint: "mcp_config.json",
             Notes: "Successor to Gemini CLI (Go). Command mode: `agy -p \"prompt\"`; async subagents; MCP stdio+HTTP."),
 
+        new ToolDescriptor(ToolId.Kimi, "Kimi Code CLI",
+            ExecutableNames: new[] { "kimi", "kimi-code" },
+            DotFolders: new[] { ".kimi" },
+            Family: AdapterFamily.Generic,
+            Capabilities: ToolCapabilities.Headless | ToolCapabilities.McpClient | ToolCapabilities.LocalProvider,
+            VersionArgs: new[] { "--version" },
+            McpConfigHint: null,
+            Notes: "Moonshot Kimi Code CLI (K2.6); Anthropic-compatible; agent swarm. Also a ProviderProfile. Preview."),
+
+        new ToolDescriptor(ToolId.MiniMax, "MiniMax CLI",
+            ExecutableNames: new[] { "mmx", "mmx-cli", "minimax" },
+            DotFolders: new[] { ".minimax", ".mmx" },
+            Family: AdapterFamily.Generic,
+            Capabilities: ToolCapabilities.Headless | ToolCapabilities.McpClient | ToolCapabilities.LocalProvider,
+            VersionArgs: new[] { "--version" },
+            McpConfigHint: null,
+            Notes: "MiniMax MMX-CLI (M2.5); Anthropic-compatible. Also a ProviderProfile. Preview."),
+
         new ToolDescriptor(ToolId.Zai, "z.ai (GLM) CLI",
             ExecutableNames: new[] { "zai", "zai-cli" },
             DotFolders: Array.Empty<string>(),
@@ -178,66 +199,37 @@ public sealed record ToolDescriptor(
             Notes: "Local model runtime; HTTP :11434 (/api/chat, /v1/..., /api/tags). Default reviewer/embeddings.")
             { Kind = ToolKind.Runtime },
 
-        // --- Desktop GUI apps: detected & reported, but NOT headless-drivable (no adapter). ---
+        // --- Desktop GUI apps: detected & reported (registry display-name match), but NOT
+        //     headless-drivable (no adapter). Drive the matching CLI instead. ---
 
-        new ToolDescriptor(ToolId.CopilotDesktop, "GitHub Copilot (Desktop)",
-            ExecutableNames: Array.Empty<string>(), DotFolders: Array.Empty<string>(),
-            Family: AdapterFamily.Generic, Capabilities: ToolCapabilities.None,
-            VersionArgs: Array.Empty<string>(), McpConfigHint: null,
-            Notes: "Standalone agent-native desktop app (preview). GUI — drive the `copilot` CLI instead.")
-            {
-                Kind = ToolKind.Desktop,
-                AppPaths = new[]
-                {
-                    @"%LOCALAPPDATA%\Programs\GitHubCopilot\GitHub Copilot.exe",
-                    @"%LOCALAPPDATA%\Programs\github-copilot\GitHub Copilot.exe",
-                    @"%PROGRAMFILES%\GitHub Copilot\GitHub Copilot.exe",
-                },
-            },
-
-        new ToolDescriptor(ToolId.CodexApp, "OpenAI Codex (App)",
-            ExecutableNames: Array.Empty<string>(), DotFolders: Array.Empty<string>(),
-            Family: AdapterFamily.Generic, Capabilities: ToolCapabilities.None,
-            VersionArgs: Array.Empty<string>(), McpConfigHint: null,
-            Notes: "Codex desktop app (Windows/macOS) for parallel threads. GUI — drive the `codex` CLI instead.")
-            {
-                Kind = ToolKind.Desktop,
-                AppPaths = new[]
-                {
-                    @"%LOCALAPPDATA%\Programs\codex\Codex.exe",
-                    @"%LOCALAPPDATA%\Programs\@openai\Codex.exe",
-                    @"%PROGRAMFILES%\Codex\Codex.exe",
-                },
-            },
-
-        new ToolDescriptor(ToolId.HermesDesktop, "Hermes (Desktop)",
-            ExecutableNames: Array.Empty<string>(), DotFolders: Array.Empty<string>(),
-            Family: AdapterFamily.Generic, Capabilities: ToolCapabilities.None,
-            VersionArgs: Array.Empty<string>(), McpConfigHint: null,
-            Notes: "Native Hermes GUI (preview). GUI — drive the `hermes` CLI instead.")
-            {
-                Kind = ToolKind.Desktop,
-                AppPaths = new[]
-                {
-                    @"%LOCALAPPDATA%\Programs\Hermes\Hermes.exe",
-                    @"%LOCALAPPDATA%\Programs\hermes-desktop\Hermes.exe",
-                },
-            },
-
-        new ToolDescriptor(ToolId.ClaudeDesktop, "Claude (Desktop)",
-            ExecutableNames: Array.Empty<string>(), DotFolders: Array.Empty<string>(),
-            Family: AdapterFamily.Generic, Capabilities: ToolCapabilities.None,
-            VersionArgs: Array.Empty<string>(), McpConfigHint: null,
-            Notes: "Claude desktop app. GUI — drive the `claude` CLI instead.")
-            {
-                Kind = ToolKind.Desktop,
-                AppPaths = new[]
-                {
-                    @"%LOCALAPPDATA%\AnthropicClaude\Claude.exe",
-                    @"%LOCALAPPDATA%\Programs\claude\Claude.exe",
-                },
-            },
+        Desktop(ToolId.CopilotDesktop, "GitHub Copilot (Desktop)", new[] { "GitHub Copilot" },
+            "Standalone agent-native desktop app (preview). GUI — drive the `copilot` CLI instead."),
+        Desktop(ToolId.CodexApp, "OpenAI Codex (App)", new[] { "OpenAI Codex", "Codex" },
+            "Codex desktop app for parallel threads. GUI — drive the `codex` CLI instead."),
+        Desktop(ToolId.ClaudeDesktop, "Claude (Desktop)", new[] { "Claude" },
+            "Claude desktop app. GUI — drive the `claude` CLI instead."),
+        Desktop(ToolId.CursorDesktop, "Cursor (IDE)", new[] { "Cursor" },
+            "Cursor agentic IDE (VS Code fork). GUI — drive the `cursor-agent` CLI instead."),
+        Desktop(ToolId.QwenDesktop, "Qwen Chat (Desktop)", new[] { "Qwen" },
+            "Qwen Chat/Studio desktop app. GUI — drive the `qwen` Code CLI instead."),
+        Desktop(ToolId.KimiDesktop, "Kimi (Desktop)", new[] { "Kimi" },
+            "Moonshot Kimi desktop app (+ WebBridge). GUI — drive the `kimi` CLI instead."),
+        Desktop(ToolId.MiniMaxDesktop, "MiniMax (Desktop)", new[] { "MiniMax" },
+            "MiniMax Agent/Code desktop app. GUI — drive the `mmx` CLI instead."),
+        Desktop(ToolId.OpenCodeDesktop, "OpenCode (Desktop)", new[] { "OpenCode", "opencode" },
+            "OpenCode desktop app (beta). GUI — drive the `opencode` CLI / `opencode serve` instead."),
+        Desktop(ToolId.HermesDesktop, "Hermes (Desktop)", new[] { "Hermes" },
+            "Native Hermes GUI (preview). GUI — drive the `hermes` CLI instead."),
+        Desktop(ToolId.AntigravityApp, "Google Antigravity (IDE)", new[] { "Antigravity" },
+            "Antigravity agent-first desktop IDE. GUI — drive the `agy` CLI instead."),
     };
+
+    /// <summary>Helper for desktop-app catalog entries (detected by registry display-name match).</summary>
+    private static ToolDescriptor Desktop(ToolId id, string name, string[] namePatterns, string notes) => new(
+        id, name, ExecutableNames: Array.Empty<string>(), DotFolders: Array.Empty<string>(),
+        Family: AdapterFamily.Generic, Capabilities: ToolCapabilities.None,
+        VersionArgs: Array.Empty<string>(), McpConfigHint: null, Notes: notes)
+        { Kind = ToolKind.Desktop, AppNamePatterns = namePatterns };
 
     public static ToolDescriptor For(ToolId id) => All.First(d => d.Id == id);
 }
