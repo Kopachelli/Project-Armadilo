@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Armadillo.Core.Orchestration;
+using Armadillo.Core.Persistence;
 using Armadillo.Core.Review;
 using Armadillo.Core.Tools;
 using Microsoft.AspNetCore.Builder;
@@ -23,10 +24,12 @@ public static class McpDaemon
         McpEndpoint endpoint,
         string operatorConfigPath,
         int port = 0,
+        string? token = null,
+        IStore? store = null,
         Action<string>? log = null,
         CancellationToken ct = default)
     {
-        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        token ??= Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
 
         var builder = WebApplication.CreateSlimBuilder();
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
@@ -40,7 +43,7 @@ public static class McpDaemon
         var app = builder.Build();
         app.Urls.Add($"http://127.0.0.1:{port}");
         app.MapMcp();
-        MapControlApi(app);
+        MapControlApi(app, store, log);
 
         await app.StartAsync(ct).ConfigureAwait(false);
 
@@ -67,9 +70,34 @@ public static class McpDaemon
     /// Plain-HTTP control API alongside MCP — the integration surface the TS sidecar (ACP/A2A bridges)
     /// calls. Token-protected; honours the same lineage header as MCP so the fork-bomb guard applies.
     /// </summary>
-    private static void MapControlApi(WebApplication app)
+    private static void MapControlApi(WebApplication app, IStore? store, Action<string>? log)
     {
         app.MapGet("/api/health", () => Results.Json(new { ok = true, service = "armadillo" }));
+
+        // Hooks endpoint: any Claude session wired by `armadillo connect` POSTs lifecycle events here.
+        // Observe-only by default (log + audit, allow the tool). The verb is the seam where a deny
+        // policy could later block tools across all your sessions.
+        app.MapPost("/api/hook", async (HttpContext ctx, McpEndpoint ep) =>
+        {
+            if (!string.IsNullOrEmpty(ep.Token) && ctx.Request.Headers["X-Armadillo-Token"].ToString() != ep.Token)
+                return Results.Unauthorized();
+
+            string? evt = null, tool = null, detail = null;
+            try
+            {
+                using var doc = await JsonDocument.ParseAsync(ctx.Request.Body, cancellationToken: ctx.RequestAborted);
+                var root = doc.RootElement;
+                evt = root.TryGetProperty("hook_event_name", out var e) ? e.GetString() : null;
+                tool = root.TryGetProperty("tool_name", out var t) ? t.GetString() : null;
+                if (root.TryGetProperty("tool_input", out var ti) && ti.ValueKind == JsonValueKind.Object)
+                    detail = ti.GetRawText();
+            }
+            catch { /* tolerate */ }
+
+            log?.Invoke($"[hook] {evt}{(tool is not null ? " " + tool : "")}");
+            store?.Audit("hook", evt ?? "event", tool ?? "", detail);
+            return Results.Json(new { }); // allow / defer
+        });
 
         app.MapPost("/api/request_agent", async (HttpContext ctx, AgentDispatcher dispatcher, McpEndpoint ep) =>
         {

@@ -4,6 +4,9 @@ using Armadillo.Core.Brain;
 using Armadillo.Core.Orchestration;
 using Armadillo.Core.Spawning;
 using Armadillo.Core.Tools;
+using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text.Json.Nodes;
 using Armadillo.Detection;
 using Armadillo.Mcp;
 using Armadillo.Runtime;
@@ -26,6 +29,10 @@ switch (command)
         return await SuperviseAsync(args);
     case "hook":
         return await HookAsync(args);
+    case "connect":
+        return await ConnectAsync(args);
+    case "disconnect":
+        return await DisconnectAsync(args);
     case "improve":
         return await ImproveAsync(args);
     case "playbooks":
@@ -100,7 +107,7 @@ static string Truncate(string s, int max) => s.Length <= max ? s : s[..(max - 1)
 static async Task<int> ServeAsync(string[] args)
 {
     var opts = ParseFlags(args);
-    int port = int.TryParse(opts.Get("port"), out var p) ? p : 0;
+    int port = int.TryParse(opts.Get("port"), out var p) ? p : 8787; // stable default so registered configs don't go stale
 
     using var reg = Registrator.Create(new RegistratorOptions
     {
@@ -111,13 +118,14 @@ static async Task<int> ServeAsync(string[] args)
     using var cts = new CancellationTokenSource();
     Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 
+    var token = GetOrCreateDaemonToken(reg.Paths);
     var operatorConfig = Path.Combine(reg.Paths.ConfigDir, "operator.mcp.json");
     Console.WriteLine("Armadillo Registrator — starting MCP daemon…");
 
     try
     {
         await McpDaemon.RunAsync(reg.Dispatcher, reg.McpEndpoint, operatorConfig, port,
-            log: Console.WriteLine, ct: cts.Token);
+            token, reg.Store, log: Console.WriteLine, ct: cts.Token);
     }
     catch (OperationCanceledException) { /* clean shutdown */ }
 
@@ -454,6 +462,161 @@ static int KillSwitch(string[] args)
     return 0;
 }
 
+static async Task<int> ConnectAsync(string[] args)
+{
+    var opts = ParseFlags(args);
+    int port = int.TryParse(opts.Get("port"), out var p) ? p : 8787;
+    var url = $"http://127.0.0.1:{port}";
+    var paths = new PathProvider(); paths.EnsureWorkspace();
+    var token = GetOrCreateDaemonToken(paths);
+
+    // Hook command: absolute path to this armadillo exe when we are it, else assume `armadillo` on PATH.
+    var exe = Environment.ProcessPath;
+    var hookExe = exe is not null && Path.GetFileNameWithoutExtension(exe).Equals("armadillo", StringComparison.OrdinalIgnoreCase)
+        ? exe : "armadillo";
+    var hookCmd = $"\"{hookExe}\" hook --url {url} --token {token}";
+
+    Console.WriteLine($"Connecting Claude Code to Armadillo ({url}) …");
+
+    var detected = await new ToolDetector(home: paths.HomeDirectory).DetectAsync(ToolId.Claude);
+    if (detected.ExecutablePath is null)
+    {
+        Console.Error.WriteLine("claude CLI not found — install Claude Code first.");
+        return 1;
+    }
+    var claude = detected.ExecutablePath;
+
+    // 1) MCP server (user scope).
+    var mcpJson = System.Text.Json.JsonSerializer.Serialize(new
+    {
+        type = "http", url,
+        headers = new Dictionary<string, string> { ["X-Armadillo-Token"] = token },
+    });
+    await RunClaude(claude, new[] { "mcp", "remove", "armadillo", "-s", "user" }); // idempotent
+    var mcpOk = await RunClaude(claude, new[] { "mcp", "add-json", "armadillo", mcpJson, "-s", "user" });
+    if (!mcpOk)
+        mcpOk = await RunClaude(claude, new[] { "mcp", "add", "--transport", "http", "armadillo", url,
+            "--header", $"X-Armadillo-Token: {token}", "-s", "user" });
+    Console.WriteLine(mcpOk
+        ? "  MCP: registered 'armadillo' (user scope)."
+        : "  MCP: auto-register failed; run: claude mcp add-json armadillo '" + mcpJson + "' -s user");
+
+    // 2) Hooks merged into ~/.claude/settings.json (existing hooks preserved; backup written).
+    var settingsPath = Path.Combine(paths.HomeDirectory, ".claude", "settings.json");
+    InstallHooks(settingsPath, hookCmd);
+    Console.WriteLine("  Hooks: PreToolUse/PostToolUse/Stop installed into ~/.claude/settings.json (.bak backup).");
+
+    Console.WriteLine();
+    Console.WriteLine("Connected. Run `armadillo serve` and keep it up. Then EVERY Claude Code session you open can");
+    Console.WriteLine("call the request_agent tool (MCP) and is observed by Armadillo (hooks). Undo: `armadillo disconnect`.");
+    return 0;
+}
+
+static async Task<int> DisconnectAsync(string[] args)
+{
+    var paths = new PathProvider();
+    Console.WriteLine("Disconnecting Claude Code from Armadillo …");
+    var detected = await new ToolDetector(home: paths.HomeDirectory).DetectAsync(ToolId.Claude);
+    if (detected.ExecutablePath is not null)
+        await RunClaude(detected.ExecutablePath, new[] { "mcp", "remove", "armadillo", "-s", "user" });
+    Console.WriteLine("  MCP: removed 'armadillo' (user scope).");
+    RemoveHooks(Path.Combine(paths.HomeDirectory, ".claude", "settings.json"));
+    Console.WriteLine("  Hooks: removed Armadillo entries from ~/.claude/settings.json.");
+    return 0;
+}
+
+static string GetOrCreateDaemonToken(IPathProvider paths)
+{
+    var file = Path.Combine(paths.ConfigDir, "daemon.token");
+    if (File.Exists(file)) { var t = File.ReadAllText(file).Trim(); if (t.Length > 0) return t; }
+    var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+    Directory.CreateDirectory(paths.ConfigDir);
+    File.WriteAllText(file, token);
+    return token;
+}
+
+static async Task<bool> RunClaude(string claudeExe, string[] args)
+{
+    try
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = claudeExe, RedirectStandardOutput = true, RedirectStandardError = true,
+            UseShellExecute = false, CreateNoWindow = true,
+        };
+        foreach (var a in args) psi.ArgumentList.Add(a);
+        using var proc = Process.Start(psi);
+        if (proc is null) return false;
+        await proc.WaitForExitAsync();
+        return proc.ExitCode == 0;
+    }
+    catch { return false; }
+}
+
+static void InstallHooks(string settingsPath, string hookCmd)
+{
+    var root = LoadJsonObject(settingsPath);
+    if (root["hooks"] is not JsonObject hooks) { hooks = new JsonObject(); root["hooks"] = hooks; }
+
+    JsonObject Entry(bool withMatcher)
+    {
+        var e = new JsonObject();
+        if (withMatcher) e["matcher"] = "*";
+        e["hooks"] = new JsonArray(new JsonObject { ["type"] = "command", ["command"] = hookCmd, ["timeout"] = 20 });
+        return e;
+    }
+    void Add(string evt, bool withMatcher)
+    {
+        if (hooks[evt] is not JsonArray arr) { arr = new JsonArray(); hooks[evt] = arr; }
+        if (arr.Any(i => i is JsonObject o && EntryIsOurs(o))) return; // idempotent
+        arr.Add(Entry(withMatcher));
+    }
+    Add("PreToolUse", true);
+    Add("PostToolUse", true);
+    Add("Stop", false);
+    SaveJsonObject(settingsPath, root);
+}
+
+static void RemoveHooks(string settingsPath)
+{
+    if (!File.Exists(settingsPath)) return;
+    var root = LoadJsonObject(settingsPath);
+    if (root["hooks"] is not JsonObject hooks) return;
+    foreach (var evt in hooks.Select(kv => kv.Key).ToList())
+    {
+        if (hooks[evt] is not JsonArray arr) continue;
+        var kept = new JsonArray();
+        foreach (var item in arr)
+            if (!(item is JsonObject o && EntryIsOurs(o))) kept.Add(item?.DeepClone());
+        hooks[evt] = kept;
+    }
+    SaveJsonObject(settingsPath, root);
+}
+
+static bool EntryIsOurs(JsonObject entry)
+{
+    if (entry["hooks"] is not JsonArray hs) return false;
+    return hs.Any(h =>
+    {
+        var cmd = (h as JsonObject)?["command"]?.GetValue<string>() ?? "";
+        return cmd.Contains("armadillo", StringComparison.OrdinalIgnoreCase) && cmd.Contains(" hook", StringComparison.OrdinalIgnoreCase);
+    });
+}
+
+static JsonObject LoadJsonObject(string path)
+{
+    try { if (File.Exists(path)) return JsonNode.Parse(File.ReadAllText(path)) as JsonObject ?? new JsonObject(); }
+    catch { }
+    return new JsonObject();
+}
+
+static void SaveJsonObject(string path, JsonObject root)
+{
+    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+    if (File.Exists(path)) File.Copy(path, path + ".bak", overwrite: true);
+    File.WriteAllText(path, root.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+}
+
 static FlagSet ParseFlags(string[] args)
 {
     var flags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -484,7 +647,9 @@ static void PrintHelp()
 
         Commands:
           doctor        Detect installed AI CLI tools + local model runtimes (capability matrix)
-          serve         Run the Registrator daemon + MCP server
+          serve         Run the Registrator daemon + MCP/control/hook server (default 127.0.0.1:8787)
+          connect       Wire your Claude Code into Armadillo (user-scope MCP + global hooks)
+          disconnect    Remove the Armadillo MCP server + hooks from your Claude config
           run           Spawn headless session(s): run "<task>" [--tool T] [--count N] [--review-model M]
           assets        Show skills + MCP servers + configs per tool variant: assets [filter]
           chain         Run a cross-tool pipeline: chain "<goal>" [--repo PATH] | chain --spec file.json
