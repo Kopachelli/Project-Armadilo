@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Armadillo — a local self-learning AI core that orchestrates your AI coding CLIs</title>
+<meta name="description" content="Armadillo detects your installed AI agents, runs them headlessly, reviews and learns from every result, and lets any agent call the administrator for help — all on your machine." />
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#121724; --panel2:#0f1420; --txt:#e6e9f0; --muted:#9aa4b2;
+    --accent:#7c5cff; --accent2:#28c2a0; --line:#1e2536; --code:#0a0d15;
+  }
+  *{box-sizing:border-box} html{scroll-behavior:smooth}
+  body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#1a1340 0%,transparent 60%),var(--bg);
+       color:var(--txt);font:16px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  a{color:var(--accent2);text-decoration:none} a:hover{text-decoration:underline}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+  header{padding:18px 0;display:flex;align-items:center;justify-content:space-between}
+  .brand{font-weight:700;font-size:18px} .brand span{opacity:.6;font-weight:400}
+  nav a{color:var(--muted);margin-left:18px;font-size:14px}
+  .hero{padding:72px 0 40px;text-align:center}
+  .hero h1{font-size:clamp(34px,6vw,58px);line-height:1.05;margin:.2em 0;letter-spacing:-.02em}
+  .hero .lead{font-size:clamp(17px,2.4vw,21px);color:var(--muted);max-width:760px;margin:18px auto 28px}
+  .tag{display:inline-block;padding:5px 12px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:13px;margin-bottom:18px}
+  .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .btn{display:inline-block;padding:12px 22px;border-radius:10px;font-weight:600;border:1px solid var(--line)}
+  .btn.primary{background:linear-gradient(135deg,var(--accent),#5b3df0);color:#fff;border:none}
+  .btn.ghost{background:var(--panel);color:var(--txt)}
+  section{padding:46px 0;border-top:1px solid var(--line)}
+  h2{font-size:28px;letter-spacing:-.01em;margin:0 0 8px}
+  .sub{color:var(--muted);margin:0 0 26px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+  .card h3{margin:.1em 0 .4em;font-size:17px} .card p{margin:0;color:var(--muted);font-size:14.5px}
+  .card .ic{font-size:22px}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:12px;padding:18px;overflow:auto;
+      font:13.5px/1.7 "Cascadia Code",Consolas,monospace;color:#cdd6e4}
+  .flow{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:18px;
+        font:13px/1.7 "Cascadia Code",Consolas,monospace;color:#aab4c5;white-space:pre;overflow:auto}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:20px} @media(max-width:720px){.two{grid-template-columns:1fr}}
+  footer{padding:40px 0 60px;color:var(--muted);text-align:center;border-top:1px solid var(--line)}
+  .pill{color:var(--accent2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">🦔 Armadillo <span>/ self-learning AI core</span></div>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/Kopachelli/Project-Armadilo">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <div class="tag">Local · Private · Windows-first · MIT open source</div>
+    <h1>One brain for all your<br/>AI coding agents.</h1>
+    <p class="lead">Armadillo detects your installed AI CLIs, runs them headlessly, reviews and learns
+      from every result, and lets any agent <em>“call the administrator”</em> for help — entirely on your machine.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/Kopachelli/Project-Armadilo/releases">Download</a>
+      <a class="btn ghost" href="https://github.com/Kopachelli/Project-Armadilo">View on GitHub →</a>
+    </div>
+  </div>
+
+  <section id="features">
+    <h2>What it does</h2>
+    <p class="sub">A control room for every AI agent you already have.</p>
+    <div class="grid">
+      <div class="card"><div class="ic">🔎</div><h3>Detect everything</h3><p>Installed CLIs, local model runtimes, and desktop apps — with their skills, MCP servers, plugins, and configs.</p></div>
+      <div class="card"><div class="ic">🚀</div><h3>Run headlessly</h3><p>Delegate a task to one agent or fan out to many in parallel — no terminal babysitting.</p></div>
+      <div class="card"><div class="ic">🧪</div><h3>Review locally</h3><p>Every result is scored by a local model (Ollama) — private and $0 tokens.</p></div>
+      <div class="card"><div class="ic">🧠</div><h3>Learn &amp; route</h3><p>Remembers what works and routes future work to the best tool — automatically.</p></div>
+      <div class="card"><div class="ic">🔗</div><h3>Cross-tool chains</h3><p>Pipelines where one step feeds the next — across different engines, in isolated git worktrees.</p></div>
+      <div class="card"><div class="ic">👁️</div><h3>Live supervision</h3><p>Observe and even interrupt a running Claude Code session via hooks.</p></div>
+      <div class="card"><div class="ic">♻️</div><h3>Self-improving</h3><p>Proposes better playbooks, A/B-tests them, and promotes only on a measured win — with auto-rollback &amp; a kill switch.</p></div>
+      <div class="card"><div class="ic">🛡️</div><h3>Safe by design</h3><p>Fork-bomb guards, budgets, audit, loopback-only. Your configs and code never leave your machine.</p></div>
+    </div>
+  </section>
+
+  <section id="how">
+    <h2>How it works</h2>
+    <p class="sub">A self-learning core with a pluggable body.</p>
+    <div class="flow">  editors / external agents / running CLI sessions
+     │     MCP (native .NET) · A2A + Zed ACP (TS sidecar)
+     ▼
+  THE CORE / BRAIN     memory · learning · routing · local review · governor
+     ▼
+  Tool adapters        one driver per CLI/runtime · cloud or local provider
+     ▼
+  Orchestration        spawn · supervise · git-worktree isolation · chains
+     └── persistence (SQLite + transcripts) · append-only audit</div>
+    <p class="sub" style="margin-top:18px">Deep dives:
+      <a href="https://github.com/Kopachelli/Project-Armadilo/blob/dev/docs/ARCHITECTURE.md">Architecture</a> ·
+      <a href="https://github.com/Kopachelli/Project-Armadilo/blob/dev/docs/SCENARIOS.md">Scenarios</a>
+    </p>
+  </section>
+
+  <section id="install">
+    <h2>Install &amp; go</h2>
+    <p class="sub">Per-user, no admin. Then wire it into your existing Claude Code sessions.</p>
+    <div class="two">
+      <div>
+        <pre># Installer or portable from Releases, then:
+armadillo doctor        <span style="color:#5b6677"># what's installed</span>
+armadillo run "..."     <span style="color:#5b6677"># run + review a task</span>
+armadillo chain "..."   <span style="color:#5b6677"># cross-tool pipeline</span></pre>
+      </div>
+      <div>
+        <pre># Connect your existing Claude Code:
+armadillo connect       <span style="color:#5b6677"># MCP + hooks</span>
+armadillo autostart on  <span style="color:#5b6677"># daemon at login</span>
+armadillo serve         <span style="color:#5b6677"># keep the brain up</span></pre>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    🦔 <strong>Armadillo</strong> — <span class="pill">MIT</span> open source ·
+    <a href="https://github.com/Kopachelli/Project-Armadilo">github.com/Kopachelli/Project-Armadilo</a>
+  </footer>
+</div>
+</body>
+</html>

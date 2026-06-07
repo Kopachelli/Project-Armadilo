@@ -1,113 +1,122 @@
-# Project Armadillo
+<div align="center">
 
-A local, privacy-first **self-learning AI core + CLI-agent orchestration harness** for Windows.
+# 🦔 Armadillo
 
-A running AI session (Claude Code, Codex, Cursor, Gemini, Qwen, GitHub Copilot, Pi, OpenCode, OpenClaw,
-Hermes, Google Antigravity, Kimi, MiniMax, z.ai/GLM…) that hits a sub-problem can **"call the
-administrator"** — the Registrator detects what's installed (CLIs, local runtimes, and — via a Windows
-registry scan — desktop apps it reports but won't drive), spawns the
-right headless agent(s), **captures and reviews everything** (locally, to save tokens), **learns**
-from each run, and returns the result. It works with **one** tool or **many**, on the same or
-different tasks. Local now; cloud later. Protocol-, tool-, and provider-agnostic by design.
+### A local, privacy-first **self-learning AI core** that orchestrates your AI coding CLIs.
 
-> Status: **Phases 0–5 working** end-to-end (spine, brain, multi-tool, autonomous self-improvement,
-> protocols, standalone GUI). See the roadmap below.
->
-> 📖 **Docs:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (every model/component — how & why) ·
-> [docs/SCENARIOS.md](docs/SCENARIOS.md) (every flow — how it works, why, and what's verified).
+[![CI](https://github.com/Kopachelli/Project-Armadilo/actions/workflows/ci.yml/badge.svg)](https://github.com/Kopachelli/Project-Armadilo/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Kopachelli/Project-Armadilo?include_prereleases&sort=semver)](https://github.com/Kopachelli/Project-Armadilo/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4)
+![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6)
 
-## Architecture (four layers, brain at the center)
+*Detect your installed AI agents → run them headlessly → review + learn from every result →
+let any agent “call the administrator” for help. All on your machine.*
 
-1. **Core / brain** — memory (episodic runs + distilled learnings), local-first review, the
-   Router/Registrator, and the safety Governor.
-2. **Protocol layer (pluggable)** — **MCP** today (how an agent calls the administrator); Zed **ACP**
-   and Google **A2A** are designed-in for later.
-3. **Tool layer (pluggable, provider-agnostic)** — one adapter per CLI; a `ProviderProfile` decouples
-   *which binary* from *which model endpoint* (cloud, z.ai/GLM, Qwen, or local Ollama).
-4. **Orchestration body** — headless spawn / capture / review / persist, with worktree isolation.
+[Install](#-install) · [How it works](#-how-it-works) · [Docs](docs/ARCHITECTURE.md) · [Scenarios](docs/SCENARIOS.md)
 
-## Projects
+</div>
 
-| Project | Role |
+---
+
+## What is Armadillo?
+
+Armadillo is the **brain and dispatcher** for the AI coding tools you already have. Instead of babysitting
+one agent in one terminal, you get a local engine that:
+
+- 🔎 **Detects** every installed AI CLI, local model runtime, and even desktop app.
+- 🚀 **Runs** any of them headlessly on a task — one agent, or many in parallel.
+- 🧪 **Reviews** every result with a **local** model (private, $0 tokens) and **remembers** it.
+- 🧠 **Learns** which tool/approach works, and routes future work accordingly.
+- 🤝 **Lets agents call for help** — a running Claude Code session can delegate sub-tasks back to Armadillo (MCP).
+- 🔌 **Plugs into protocols** — MCP (native), plus A2A + Zed ACP via a TypeScript sidecar.
+- 🛡️ **Stays safe** — fork-bomb/recursion guards, budgets, kill switch, full audit. Local-first, loopback-only.
+
+It ships as a **standalone Windows app** and a **CLI** (`armadillo`) over the same engine.
+
+## ✨ Highlights
+
+| | |
 |---|---|
-| `Armadillo.Core` | Brain, spawning, persistence, adapters, governor, dispatcher (no UI/transport) |
-| `Armadillo.Detection` | Detects installed CLIs + Ollama models (ported from Quiver-Pro) |
-| `Armadillo.Mcp` | MCP server (`request_agent`) over Streamable HTTP on `127.0.0.1` |
-| `Armadillo.Runtime` | Composition root (`Registrator`) shared by the CLI and the GUI |
-| `Armadillo.Host` | `armadillo` console: `doctor` / `assets` / `run` / `chain` / `supervise` / `serve` / `improve` / `playbooks` / `kill-switch` |
-| `Armadillo.App` | **Standalone native-Windows WPF dashboard** (WPF-UI): tools, assets, activity, run panel |
-| `Armadillo.Tests` | xUnit tests (governor, reviewer, adapter, resolver, self-improvement, assets, chains) |
-| `sidecar/` (Node/TS) | Protocol bridges — A2A (live) + Zed ACP (preview) → Core control API |
+| **One brain, many tools** | Claude Code, Codex, Cursor, Gemini, Qwen, GitHub Copilot, Pi, OpenCode, OpenClaw, Hermes, Antigravity, Kimi, MiniMax, Ollama |
+| **Cross-tool chains** | Pipelines where step N's output feeds step N+1 — across *different* engines (e.g. Claude → local Qwen) |
+| **Live supervision** | Observe and **interrupt a running Claude session** via hooks |
+| **Autonomous self-improvement** | Proposes better playbooks, A/B-tests them, promotes only on a measured win — with auto-rollback + kill switch |
+| **Works with your existing sessions** | `armadillo connect` wires Armadillo into Claude Code (user-scope MCP + global hooks) |
+| **Fetch everything** | Per-tool skills + MCP servers + plugins + configs (CLI vs Desktop kept distinct) |
 
-## Two front-ends: GUI app + CLI
+## 🔧 How it works
 
-- **`Armadillo.App`** — a standalone native-Windows WPF dashboard. Tabs: **Tools** (capability matrix),
-  **Assets** (skills/MCP/plugins/configs per variant), **Activity** (recent jobs), **Run** (spawn a task).
-- **`armadillo`** — the CLI (`doctor`/`assets`/`run`/`chain`/`supervise`/`serve`/`improve`/`playbooks`/`kill-switch`).
-
-Both drive the **same in-process engine** and read the same workspace (`%LOCALAPPDATA%\Armadillo`).
-
-## Build & install (same pipeline as Quiver/Quiver-Pro)
-
-```powershell
-./build.ps1               # -> dist\Armadillo-portable.exe (GUI), dist\armadillo.exe (CLI), publish-app\ (installer payload)
-./build.ps1 -Installer    # also -> dist\Armadillo-Setup.exe   (needs Inno Setup: winget install JRSoftware.InnoSetup)
+```
+        editors / external agents / running CLI sessions
+   ┌──────── Protocols ────────┐   MCP (native .NET) · A2A + Zed ACP (TS sidecar)
+   ▼
+   THE CORE / BRAIN (.NET)      memory · learning · routing · local review · governor
+   ▼
+   Tool adapters (pluggable)    one driver per CLI/runtime · provider-agnostic (cloud or local)
+   ▼
+   Orchestration body           spawn · supervise · git-worktree isolation · chains
+        Persistence (SQLite + transcripts) · append-only audit
 ```
 
-Install options (all per-user, no admin):
-- **Portable** — run `dist\Armadillo-portable.exe` (GUI) or `dist\armadillo.exe` (CLI) directly; nothing to install.
-- **Self-install (no Inno)** — `installer\install.ps1` installs the GUI (Start-Menu + Apps & features)
-  **and** the CLI (onto your PATH, so `armadillo …` works in any terminal). `installer\uninstall.ps1` reverses it.
-- **Setup.exe** — `dist\Armadillo-Setup.exe` (Inno) does the same and adds the CLI to PATH.
+When you run a task: the **Governor** authorizes it → the **Router** picks the tool (your choice, or
+**learned priors**) → the **brain** injects relevant past learnings → the agent runs **headless** in an
+isolated dir → the **reviewer** scores it locally → the brain **captures a learning** → you get the result.
+Full write-up: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** and **[docs/SCENARIOS.md](docs/SCENARIOS.md)**.
 
-Releases are cut by pushing a tag (`git tag v0.1.0 && git push origin v0.1.0`) — the GitHub Actions
-`release.yml` builds the portable GUI exe, the portable CLI exe, and the installer, then publishes a
-GitHub Release (SignPath OSS code-signing pre-wired, inert until enabled).
+## 📦 Install
 
-## Quick start
+**Option A — Installer** (per-user, no admin): download `Armadillo-Setup.exe` from
+[Releases](https://github.com/Kopachelli/Project-Armadilo/releases) and run it. Installs the **app**
+(Start Menu) and the **`armadillo` CLI** (on PATH).
 
+**Option B — Portable**: download `Armadillo-portable.exe` (GUI) or `armadillo.exe` (CLI) and just run it.
+
+**Build it yourself:**
 ```powershell
-dotnet build
-dotnet run --project src/Armadillo.Host -- doctor          # capability matrix
-dotnet run --project src/Armadillo.Host -- run "Write a haiku about Windows."
-
-# Run the Registrator daemon (hosts the MCP server) and point a CLI at it:
-dotnet run --project src/Armadillo.Host -- serve
-#   then, in another shell, using the printed operator config:
-claude --mcp-config "%LOCALAPPDATA%\Armadillo\config\operator.mcp.json" --strict-mcp-config `
-       --allowedTools "mcp__armadillo__request_agent" `
-       -p "Use request_agent to have a helper write a poem, then report it."
+git clone https://github.com/Kopachelli/Project-Armadilo
+cd Project-Armadilo
+./build.ps1 -Installer    # -> dist\Armadillo-Setup.exe, Armadillo-portable.exe, armadillo.exe
 ```
 
-Optional local review/learning (private, $0 tokens): run `ollama serve`, `ollama pull <model>`, then
-pass `--review-model <m>` / `--embed-model <m>` to `run`/`serve`.
+> Requires .NET 8 SDK to build. Local review/learning uses [Ollama](https://ollama.com) (e.g. `ollama pull qwen2.5-coder`).
 
-Workspace (DB, transcripts, configs, logs): `%LOCALAPPDATA%\Armadillo`.
+## 🚀 Quick start
 
-## Safety
+```powershell
+armadillo doctor                     # what AI tools are installed
+armadillo assets                     # skills / MCP servers / plugins / configs per tool
+armadillo run "Write a haiku."       # spawn an agent, get a reviewed result
+armadillo chain "Build X" --repo .   # cross-tool pipeline in an isolated git worktree
 
-A spawned agent can itself call `request_agent`, so the **Governor** bounds recursion: a per-session
-**lineage token** (carried in each child's generated `.mcp.json`) plus max-depth, max-concurrent, and
-per-root spawn caps. MCP binds loopback-only and requires a shared token. Everything is persisted
-(SQLite + transcripts + append-only audit).
+# Wire Armadillo into your existing Claude Code sessions:
+armadillo connect                    # user-scope MCP + global hooks
+armadillo autostart on               # run the daemon hidden at login
+armadillo serve                      # (or it auto-starts) — keep the brain available
+```
 
-## Roadmap
+Now any Claude Code session you open can call the `request_agent` tool and is observed by Armadillo.
+Undo with `armadillo disconnect`.
 
-- **Phase 2 (done: A2A live, ACP preview)** — Protocol layer via the TS `sidecar/`: A2A agent card +
-  `message:send` proven end-to-end; Zed ACP stdio bridge is a typechecked preview. MCP stays native .NET.
-- **Phase 3 (done)** — Adapter framework + Cursor/Gemini/Qwen/Codex adapters (Claude live, Gemini
-  mechanically verified, others preview), Router auto-select, parallel fan-out (`count`).
-- **Phase 4 (done)** — Autonomous self-improving brain: propose → A/B → promote on measured win, with
-  versioning, auto-rollback, append-only audit, and a kill switch (`improve` / `playbooks` / `kill-switch`).
-- **Also done** — per-tool **asset discovery** (`assets`: skills + MCP servers + **plugins** + configs,
-  CLI vs Desktop distinct); **git worktree isolation** + **cross-tool chains** (`chain`);
-  **Claude-hook live supervision** (`supervise`: observe + interrupt a running session via PreToolUse);
-  registry-based desktop-app detection; expanded catalog (Antigravity, Hermes, OpenClaw, Kimi, MiniMax + desktop apps).
-- **Also done** — Phase 5 **standalone WPF dashboard** (portable + Inno installer); **A2A streaming**
-  (JSON-RPC `message/stream` over SSE, verified live) + hardened **Zed ACP** bridge in the sidecar.
-- **Next** — richer learned routing priors; cross-platform (`IProcessHost`/`IPathProvider` POSIX impls);
-  cloud/multi-machine; verify preview CLI adapters against real binaries.
+## 🖥️ The app
 
-## License
+A native WPF dashboard with four tabs: **Tools** (capability matrix), **Assets**
+(skills/MCP/plugins/configs), **Activity** (recent jobs), **Run** (spawn a task). Same engine, same
+workspace (`%LOCALAPPDATA%\Armadillo`) as the CLI.
 
-MIT.
+## 🗺️ Roadmap
+
+- [x] Core spine + brain, local review, learned routing
+- [x] Multi-tool adapters, parallel fan-out, cross-tool chains, git-worktree isolation
+- [x] Autonomous self-improvement (A/B promotion, rollback, kill switch)
+- [x] MCP server, A2A streaming, Zed ACP bridge
+- [x] Standalone GUI + CLI, installer, connect existing Claude sessions
+- [ ] Richer learned routing; cross-platform (Linux/macOS); cloud / multi-machine
+
+## 🤝 Contributing
+
+Issues and PRs welcome. `dotnet build` + `dotnet test` (xUnit). See the docs for architecture.
+
+## 📄 License
+
+[MIT](LICENSE) — free and open source.
