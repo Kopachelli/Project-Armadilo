@@ -30,7 +30,7 @@ different tasks. Local now; cloud later. Protocol-, tool-, and provider-agnostic
 | `Armadillo.Core` | Brain, spawning, persistence, adapters, governor, dispatcher (no UI/transport) |
 | `Armadillo.Detection` | Detects installed CLIs + Ollama models (ported from Quiver-Pro) |
 | `Armadillo.Mcp` | MCP server (`request_agent`) over Streamable HTTP on `127.0.0.1` |
-| `Armadillo.Host` | `armadillo` console: `doctor` / `run` / `serve` / `improve` / `playbooks` / `kill-switch` |
+| `Armadillo.Host` | `armadillo` console: `doctor` / `assets` / `run` / `chain` / `serve` / `improve` / `playbooks` / `kill-switch` |
 | `Armadillo.Tests` | xUnit tests (governor, reviewer, adapter, resolver, self-improvement) |
 | `sidecar/` (Node/TS) | Protocol bridges — A2A (live) + Zed ACP (preview) → Core control API |
 
@@ -69,7 +69,10 @@ per-root spawn caps. MCP binds loopback-only and requires a shared token. Everyt
   mechanically verified, others preview), Router auto-select, parallel fan-out (`count`).
 - **Phase 4 (done)** — Autonomous self-improving brain: propose → A/B → promote on measured win, with
   versioning, auto-rollback, append-only audit, and a kill switch (`improve` / `playbooks` / `kill-switch`).
-- **Next** — worktree isolation + cross-tool chains; Claude-hook single-session supervision; full ACP
+- **Also done** — per-tool **asset discovery** (`assets`: skills + MCP servers + configs, CLI vs Desktop
+  distinct); **git worktree isolation** + **cross-tool chains** (`chain`); registry-based desktop-app
+  detection; expanded catalog (Antigravity, Hermes, OpenClaw, Kimi, MiniMax + desktop apps).
+- **Next** — Claude-hook single-session supervision (interrupt a *running* session); full ACP
   conformance + A2A streaming; richer routing priors; Phase 5 GUI/cross-platform/cloud.
 
 ## License
