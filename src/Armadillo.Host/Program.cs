@@ -16,6 +16,8 @@ switch (command)
         return await ServeAsync(args);
     case "run":
         return await RunAsync(args);
+    case "assets":
+        return await AssetsAsync(args);
     case "improve":
         return await ImproveAsync(args);
     case "playbooks":
@@ -167,6 +169,48 @@ static async Task<int> RunAsync(string[] args)
     return outcomes.All(o => o.Ok) ? 0 : 1;
 }
 
+static async Task<int> AssetsAsync(string[] args)
+{
+    var opts = ParseFlags(args);
+    var filter = opts.Positional;
+
+    var paths = new PathProvider();
+    var detector = new ToolDetector(home: paths.HomeDirectory);
+    var snapshot = await detector.DetectAsync();
+    var installed = snapshot.Tools.Where(t => t.Installed).Select(t => t.Id).ToHashSet();
+    var scanner = new AssetScanner(paths.HomeDirectory);
+
+    Console.WriteLine("Armadillo assets — skills, MCP servers, and configs per tool variant");
+    Console.WriteLine();
+
+    int shown = 0;
+    foreach (var d in ToolDescriptor.All)
+    {
+        if (filter is not null && !d.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase)
+            && !d.Id.ToString().Contains(filter, StringComparison.OrdinalIgnoreCase))
+            continue;
+
+        var assets = scanner.Scan(d.Id);
+        var isInstalled = installed.Contains(d.Id);
+        if (!isInstalled && assets.IsEmpty) continue;
+
+        shown++;
+        var tag = isInstalled ? (d.Kind == ToolKind.Desktop ? "[desktop]" : "[installed]") : "[configs only]";
+        Console.WriteLine($"{d.DisplayName} {tag}");
+        if (assets.Skills.Count > 0)
+            Console.WriteLine($"  skills ({assets.Skills.Count}): {string.Join(", ", assets.Skills.Take(20))}{(assets.Skills.Count > 20 ? " …" : "")}");
+        if (assets.McpServers.Count > 0)
+            Console.WriteLine($"  mcp servers ({assets.McpServers.Count}): {string.Join(", ", assets.McpServers)}");
+        if (assets.ConfigFiles.Count > 0)
+            foreach (var c in assets.ConfigFiles) Console.WriteLine($"  config: {c}");
+        if (assets.IsEmpty) Console.WriteLine("  (no skills/mcp/configs found)");
+        Console.WriteLine();
+    }
+
+    if (shown == 0) Console.WriteLine("(nothing to show)");
+    return 0;
+}
+
 static async Task<int> ImproveAsync(string[] args)
 {
     var opts = ParseFlags(args);
@@ -261,6 +305,7 @@ static void PrintHelp()
           doctor        Detect installed AI CLI tools + local model runtimes (capability matrix)
           serve         Run the Registrator daemon + MCP server
           run           Spawn headless session(s): run "<task>" [--tool T] [--count N] [--review-model M]
+          assets        Show skills + MCP servers + configs per tool variant: assets [filter]
           improve       Self-improvement cycle: improve <playbook> --tasks "a||b" [--review-model M]
           playbooks     List versions of a playbook: playbooks <name>
           kill-switch   Halt/allow self-modification: kill-switch <on|off|status>
