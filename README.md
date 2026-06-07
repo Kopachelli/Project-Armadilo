@@ -10,8 +10,11 @@ right headless agent(s), **captures and reviews everything** (locally, to save t
 from each run, and returns the result. It works with **one** tool or **many**, on the same or
 different tasks. Local now; cloud later. Protocol-, tool-, and provider-agnostic by design.
 
-> Status: **Phases 0–4 working** end-to-end (spine, brain, multi-tool, autonomous self-improvement),
-> **Phase 2 protocols** A2A live + ACP preview via the TS sidecar. See the roadmap below.
+> Status: **Phases 0–5 working** end-to-end (spine, brain, multi-tool, autonomous self-improvement,
+> protocols, standalone GUI). See the roadmap below.
+>
+> 📖 **Docs:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (every model/component — how & why) ·
+> [docs/SCENARIOS.md](docs/SCENARIOS.md) (every flow — how it works, why, and what's verified).
 
 ## Architecture (four layers, brain at the center)
 
