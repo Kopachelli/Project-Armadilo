@@ -233,6 +233,63 @@ public sealed class SqliteStore : IStore
         cmd.P("$target", target); cmd.P("$d", detailJson);
     });
 
+    public IReadOnlyList<JobRecord> RecentJobs(int n)
+    {
+        lock (_writeLock)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT * FROM jobs ORDER BY created_at DESC LIMIT $n;";
+            cmd.P("$n", n);
+            var list = new List<JobRecord>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                list.Add(new JobRecord
+                {
+                    JobId = (string)r["job_id"],
+                    ParentJobId = r["parent_job_id"] as string,
+                    RequesterSession = r["requester_session"] as string,
+                    RootId = (string)r["root_id"],
+                    Depth = Convert.ToInt32(r["depth"]),
+                    Persona = (string)r["persona"],
+                    Task = (string)r["task"],
+                    Tool = Enum.TryParse<ToolId>((string)r["tool"], out var t) ? t : ToolId.Claude,
+                    State = Enum.TryParse<JobState>((string)r["state"], out var s) ? s : JobState.Received,
+                    CreatedAt = DateTimeOffset.Parse((string)r["created_at"]),
+                    UpdatedAt = DateTimeOffset.Parse((string)r["updated_at"]),
+                });
+            return list;
+        }
+    }
+
+    public IReadOnlyList<SessionRecord> RecentSessions(int n)
+    {
+        lock (_writeLock)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT * FROM sessions ORDER BY started_at DESC LIMIT $n;";
+            cmd.P("$n", n);
+            var list = new List<SessionRecord>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                list.Add(new SessionRecord
+                {
+                    SessionId = (string)r["session_id"],
+                    JobId = (string)r["job_id"],
+                    Tool = Enum.TryParse<ToolId>((string)r["tool"], out var t) ? t : ToolId.Claude,
+                    Model = r["model"] as string,
+                    ProviderSessionId = r["provider_session_id"] as string,
+                    ExitReason = r["exit_reason"] as string ?? "",
+                    InputTokens = r["input_tokens"] is long it ? it : 0,
+                    OutputTokens = r["output_tokens"] is long ot ? ot : 0,
+                    CostUsd = r["cost_usd"] is double c ? c : 0,
+                    TranscriptPath = r["transcript_path"] as string,
+                    StartedAt = DateTimeOffset.TryParse(r["started_at"] as string, out var sa) ? sa : default,
+                    EndedAt = DateTimeOffset.TryParse(r["ended_at"] as string, out var ea) ? ea : default,
+                });
+            return list;
+        }
+    }
+
     private static IReadOnlyList<LearningRecord> ReadLearnings(SqliteCommand cmd)
     {
         var list = new List<LearningRecord>();

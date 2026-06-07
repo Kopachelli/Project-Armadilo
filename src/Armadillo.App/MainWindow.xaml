@@ -1,0 +1,58 @@
+<ui:FluentWindow x:Class="Armadillo.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        Title="Armadillo"
+        Height="740" Width="1140"
+        ExtendsContentIntoTitleBar="True"
+        WindowBackdropType="Mica"
+        WindowCornerPreference="Round">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Title="Armadillo — self-learning AI core" />
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="12,4,12,0">
+            <ui:Button Content="Refresh" Icon="{ui:SymbolIcon ArrowSync24}" Command="{Binding RefreshCommand}" />
+            <ProgressBar Width="120" Margin="12,0,0,0" IsIndeterminate="{Binding Busy}" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <TabControl Grid.Row="2" Margin="12,8,12,8">
+            <TabItem Header="Tools">
+                <DataGrid ItemsSource="{Binding Tools}" AutoGenerateColumns="True" IsReadOnly="True"
+                          GridLinesVisibility="Horizontal" HeadersVisibility="Column" />
+            </TabItem>
+            <TabItem Header="Assets">
+                <DataGrid ItemsSource="{Binding Assets}" AutoGenerateColumns="True" IsReadOnly="True"
+                          GridLinesVisibility="Horizontal" HeadersVisibility="Column" />
+            </TabItem>
+            <TabItem Header="Activity">
+                <DataGrid ItemsSource="{Binding Jobs}" AutoGenerateColumns="True" IsReadOnly="True"
+                          GridLinesVisibility="Horizontal" HeadersVisibility="Column" />
+            </TabItem>
+            <TabItem Header="Run">
+                <DockPanel Margin="4">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                        <ComboBox Width="130" ItemsSource="{Binding RunTools}" SelectedItem="{Binding RunTool}" />
+                        <TextBox Width="700" Margin="8,0"
+                                 Text="{Binding RunTask, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="Task for the agent" />
+                        <ui:Button Content="Run" Appearance="Primary" Command="{Binding RunCommand}" />
+                    </StackPanel>
+                    <TextBox Text="{Binding RunResult}" IsReadOnly="True" TextWrapping="Wrap"
+                             AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+                             FontFamily="Cascadia Code, Consolas" />
+                </DockPanel>
+            </TabItem>
+        </TabControl>
+
+        <StatusBar Grid.Row="3">
+            <TextBlock Text="{Binding Status}" Margin="6,0" />
+        </StatusBar>
+    </Grid>
+</ui:FluentWindow>

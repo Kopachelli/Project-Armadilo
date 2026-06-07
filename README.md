@@ -30,9 +30,29 @@ different tasks. Local now; cloud later. Protocol-, tool-, and provider-agnostic
 | `Armadillo.Core` | Brain, spawning, persistence, adapters, governor, dispatcher (no UI/transport) |
 | `Armadillo.Detection` | Detects installed CLIs + Ollama models (ported from Quiver-Pro) |
 | `Armadillo.Mcp` | MCP server (`request_agent`) over Streamable HTTP on `127.0.0.1` |
+| `Armadillo.Runtime` | Composition root (`Registrator`) shared by the CLI and the GUI |
 | `Armadillo.Host` | `armadillo` console: `doctor` / `assets` / `run` / `chain` / `supervise` / `serve` / `improve` / `playbooks` / `kill-switch` |
-| `Armadillo.Tests` | xUnit tests (governor, reviewer, adapter, resolver, self-improvement) |
+| `Armadillo.App` | **Standalone native-Windows WPF dashboard** (WPF-UI): tools, assets, activity, run panel |
+| `Armadillo.Tests` | xUnit tests (governor, reviewer, adapter, resolver, self-improvement, assets, chains) |
 | `sidecar/` (Node/TS) | Protocol bridges — A2A (live) + Zed ACP (preview) → Core control API |
+
+## Desktop dashboard (Armadillo.App)
+
+A standalone, native-Windows WPF app (portable + installable) over the same in-process engine:
+
+```powershell
+# Portable single-file exe (no .NET needed to run it):
+dotnet publish src/Armadillo.App -c Release -r win-x64 --self-contained `
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o publish-app
+# -> publish-app\Armadillo.exe
+
+# Installer (Inno Setup): after the publish above,
+ISCC.exe installer\Armadillo.iss   # -> dist\Armadillo-Setup.exe
+```
+
+Tabs: **Tools** (capability matrix), **Assets** (skills/MCP/plugins/configs per variant), **Activity**
+(recent jobs from SQLite), **Run** (spawn a task on a chosen tool). It reads the same workspace
+(`%LOCALAPPDATA%\Armadillo`) as the CLI.
 
 ## Quick start
 

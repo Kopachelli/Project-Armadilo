@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Armadillo.Runtime\Armadillo.Runtime.csproj" />
+    <ProjectReference Include="..\Armadillo.Core\Armadillo.Core.csproj" />
+    <ProjectReference Include="..\Armadillo.Detection\Armadillo.Detection.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Armadillo.App</RootNamespace>
+    <AssemblyName>Armadillo</AssemblyName>
+    <Product>Armadillo</Product>
+    <Company>Armadillo</Company>
+    <Version>0.1.0</Version>
+    <Description>Armadillo — standalone dashboard for the self-learning AI core: detected tools, per-tool assets (skills/MCP/plugins/configs), activity, and a run panel.</Description>
+  </PropertyGroup>
+
+</Project>

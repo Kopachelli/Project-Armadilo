@@ -23,6 +23,12 @@ public interface IStore : IDisposable
 
     void Audit(string actor, string action, string target, string? detailJson = null);
 
+    /// <summary>Most recent jobs (for dashboards/activity views).</summary>
+    IReadOnlyList<JobRecord> RecentJobs(int n);
+
+    /// <summary>Most recent sessions (for dashboards/activity views).</summary>
+    IReadOnlyList<SessionRecord> RecentSessions(int n);
+
     // --- self-improvement (Phase 4) ---
 
     /// <summary>Insert a new playbook version. Set <c>active</c> separately via <see cref="SetActivePlaybook"/>.</summary>

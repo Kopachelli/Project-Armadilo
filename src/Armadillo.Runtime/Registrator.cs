@@ -9,7 +9,7 @@ using Armadillo.Core.Spawning;
 using Armadillo.Core.Tools;
 using Armadillo.Detection;
 
-namespace Armadillo.Host;
+namespace Armadillo.Runtime;
 
 public sealed record RegistratorOptions
 {
@@ -22,9 +22,9 @@ public sealed record RegistratorOptions
 }
 
 /// <summary>
-/// Composition root: wires the whole spine (detection, spawning, persistence, brain, review,
-/// governor, dispatcher) behind one object the Host and the MCP server both consume. Lives in the
-/// Host because it instantiates the concrete <see cref="ToolDetector"/> from Armadillo.Detection.
+/// Composition root: wires the whole spine (detection, spawning, persistence, brain, review, governor,
+/// dispatcher, chains, self-improvement) behind one object. Shared by the Host (CLI/daemon) and the
+/// Armadillo.App (WPF dashboard). Lives in Armadillo.Runtime (Core + Detection only — no ASP.NET).
 /// </summary>
 public sealed class Registrator : IDisposable
 {

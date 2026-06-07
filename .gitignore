@@ -7,6 +7,10 @@ obj/
 # Test results
 TestResults/
 
+# Publish + installer output
+publish-app/
+dist/
+
 # Node sidecar
 node_modules/
 sidecar/dist/

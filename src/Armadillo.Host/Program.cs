@@ -5,8 +5,8 @@ using Armadillo.Core.Orchestration;
 using Armadillo.Core.Spawning;
 using Armadillo.Core.Tools;
 using Armadillo.Detection;
-using Armadillo.Host;
 using Armadillo.Mcp;
+using Armadillo.Runtime;
 
 var command = args.Length > 0 ? args[0].ToLowerInvariant() : "help";
 
