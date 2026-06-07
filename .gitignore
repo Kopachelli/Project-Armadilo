@@ -9,6 +9,8 @@ TestResults/
 
 # Publish + installer output
 publish-app/
+publish-portable/
+publish-cli/
 dist/
 
 # Node sidecar

@@ -276,12 +276,17 @@ static async Task<int> HookAsync(string[] args)
 
 static string BuildHookCommand()
 {
+    // Single-file: ProcessPath is armadillo.exe itself -> use it directly.
+    // `dotnet run` dev: ProcessPath is dotnet.exe -> we need the managed dll path.
     var exe = Environment.ProcessPath ?? "dotnet";
-    var dll = System.Reflection.Assembly.GetEntryAssembly()?.Location;
-    var isDotnet = Path.GetFileNameWithoutExtension(exe).Equals("dotnet", StringComparison.OrdinalIgnoreCase);
-    return isDotnet && !string.IsNullOrEmpty(dll)
-        ? $"\"{exe}\" \"{dll}\" hook"
-        : $"\"{exe}\" hook";
+    if (Path.GetFileNameWithoutExtension(exe).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+    {
+#pragma warning disable IL3000 // only reached under `dotnet run` (not single-file), where Location is valid
+        var dll = System.Reflection.Assembly.GetEntryAssembly()?.Location;
+#pragma warning restore IL3000
+        if (!string.IsNullOrEmpty(dll)) return $"\"{exe}\" \"{dll}\" hook";
+    }
+    return $"\"{exe}\" hook";
 }
 
 static async Task<int> ChainAsync(string[] args)

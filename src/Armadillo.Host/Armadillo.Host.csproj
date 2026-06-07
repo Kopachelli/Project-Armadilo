@@ -16,6 +16,11 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AssemblyName>armadillo</AssemblyName>
+    <Product>Armadillo CLI</Product>
+    <Company>Armadillo</Company>
+    <Version>0.1.0</Version>
+    <Description>Armadillo CLI — the self-learning AI core + CLI-agent orchestration harness.</Description>
   </PropertyGroup>
 
 </Project>

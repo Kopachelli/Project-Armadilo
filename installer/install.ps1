@@ -72,9 +72,22 @@ Do-Step "Register in Apps & features (HKCU)" {
   Set-ItemProperty $regKey NoModify 1; Set-ItemProperty $regKey NoRepair 1
 }
 
+$cliDir = Join-Path $InstallDir 'cli'
+if (Test-Path (Join-Path $Source 'cli\armadillo.exe')) {
+  Do-Step "Add CLI to user PATH ($cliDir)" {
+    $p = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if (($p -split ';') -notcontains $cliDir) {
+      [Environment]::SetEnvironmentVariable('Path', ($p.TrimEnd(';') + ';' + $cliDir), 'User')
+    }
+  }
+}
+
 Do-Step "Write uninstaller" {
   Copy-Item -Path (Join-Path $PSScriptRoot 'uninstall.ps1') -Destination (Join-Path $InstallDir 'uninstall.ps1') -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host ""
-Write-Host "$(if($DryRun){'[dry-run] would be '}else{''})installed. Launch from Start Menu or: $exePath" -ForegroundColor Green
+Write-Host "$(if($DryRun){'[dry-run] would be '}else{''})installed. Launch the app from the Start Menu ($exePath)." -ForegroundColor Green
+if (Test-Path (Join-Path $Source 'cli\armadillo.exe')) {
+  Write-Host "CLI: open a NEW terminal and run 'armadillo doctor' (PATH updated)." -ForegroundColor Green
+}

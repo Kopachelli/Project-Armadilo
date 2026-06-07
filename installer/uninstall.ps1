@@ -22,5 +22,13 @@ Write-Host "Uninstalling $AppName" -ForegroundColor Cyan
 Do-Step "Remove Start-Menu shortcut" { Remove-Item $startLnk -Force }
 Do-Step "Remove Desktop shortcut"    { Remove-Item $deskLnk -Force }
 Do-Step "Remove registry entry"      { Remove-Item $regKey -Recurse -Force }
+Do-Step "Remove CLI from user PATH"  {
+  $cliDir = Join-Path $InstallDir 'cli'
+  $p = [Environment]::GetEnvironmentVariable('Path', 'User')
+  if ($p) {
+    $kept = ($p -split ';') | Where-Object { $_ -and $_ -ne $cliDir }
+    [Environment]::SetEnvironmentVariable('Path', ($kept -join ';'), 'User')
+  }
+}
 Do-Step "Remove install dir ($InstallDir)" { Remove-Item $InstallDir -Recurse -Force }
 Write-Host "Done. (Your workspace at %LOCALAPPDATA%\Armadillo was left intact.)" -ForegroundColor Green

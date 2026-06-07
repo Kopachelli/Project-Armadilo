@@ -39,23 +39,30 @@ different tasks. Local now; cloud later. Protocol-, tool-, and provider-agnostic
 | `Armadillo.Tests` | xUnit tests (governor, reviewer, adapter, resolver, self-improvement, assets, chains) |
 | `sidecar/` (Node/TS) | Protocol bridges — A2A (live) + Zed ACP (preview) → Core control API |
 
-## Desktop dashboard (Armadillo.App)
+## Two front-ends: GUI app + CLI
 
-A standalone, native-Windows WPF app (portable + installable) over the same in-process engine:
+- **`Armadillo.App`** — a standalone native-Windows WPF dashboard. Tabs: **Tools** (capability matrix),
+  **Assets** (skills/MCP/plugins/configs per variant), **Activity** (recent jobs), **Run** (spawn a task).
+- **`armadillo`** — the CLI (`doctor`/`assets`/`run`/`chain`/`supervise`/`serve`/`improve`/`playbooks`/`kill-switch`).
+
+Both drive the **same in-process engine** and read the same workspace (`%LOCALAPPDATA%\Armadillo`).
+
+## Build & install (same pipeline as Quiver/Quiver-Pro)
 
 ```powershell
-# Portable single-file exe (no .NET needed to run it):
-dotnet publish src/Armadillo.App -c Release -r win-x64 --self-contained `
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o publish-app
-# -> publish-app\Armadillo.exe
-
-# Installer (Inno Setup): after the publish above,
-ISCC.exe installer\Armadillo.iss   # -> dist\Armadillo-Setup.exe
+./build.ps1               # -> dist\Armadillo-portable.exe (GUI), dist\armadillo.exe (CLI), publish-app\ (installer payload)
+./build.ps1 -Installer    # also -> dist\Armadillo-Setup.exe   (needs Inno Setup: winget install JRSoftware.InnoSetup)
 ```
 
-Tabs: **Tools** (capability matrix), **Assets** (skills/MCP/plugins/configs per variant), **Activity**
-(recent jobs from SQLite), **Run** (spawn a task on a chosen tool). It reads the same workspace
-(`%LOCALAPPDATA%\Armadillo`) as the CLI.
+Install options (all per-user, no admin):
+- **Portable** — run `dist\Armadillo-portable.exe` (GUI) or `dist\armadillo.exe` (CLI) directly; nothing to install.
+- **Self-install (no Inno)** — `installer\install.ps1` installs the GUI (Start-Menu + Apps & features)
+  **and** the CLI (onto your PATH, so `armadillo …` works in any terminal). `installer\uninstall.ps1` reverses it.
+- **Setup.exe** — `dist\Armadillo-Setup.exe` (Inno) does the same and adds the CLI to PATH.
+
+Releases are cut by pushing a tag (`git tag v0.1.0 && git push origin v0.1.0`) — the GitHub Actions
+`release.yml` builds the portable GUI exe, the portable CLI exe, and the installer, then publishes a
+GitHub Release (SignPath OSS code-signing pre-wired, inert until enabled).
 
 ## Quick start
 

@@ -1,0 +1,105 @@
+name: Release
+
+# Builds the portable GUI exe, the portable CLI exe, and the installer on a Windows runner, then
+# publishes a GitHub Release. Mirrors Quiver/Quiver-Pro. Code signing (free for OSS via SignPath
+# Foundation) is pre-wired but inert until you set repo variable SIGNING_ENABLED=true (see docs/SIGNING.md).
+
+on:
+  push:
+    tags: ['v*']        # cut a release by pushing a tag, e.g. git tag v0.1.0 && git push origin v0.1.0
+  workflow_dispatch:    # or run manually (build-only; no release unless triggered by a tag)
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish GUI portable (self-contained single-file)
+        shell: pwsh
+        run: >
+          dotnet publish src/Armadillo.App/Armadillo.App.csproj -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
+          -o publish-portable
+
+      - name: Publish CLI portable (self-contained single-file)
+        shell: pwsh
+        run: >
+          dotnet publish src/Armadillo.Host/Armadillo.Host.csproj -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
+          -o publish-cli
+
+      - name: Publish installer payload (GUI folder + bundled CLI + scripts)
+        shell: pwsh
+        run: |
+          dotnet publish src/Armadillo.App/Armadillo.App.csproj -c Release -r win-x64 --self-contained true -o publish-app
+          New-Item -ItemType Directory -Force publish-app/cli | Out-Null
+          Copy-Item publish-cli/armadillo.exe publish-app/cli/armadillo.exe -Force
+          Copy-Item installer/install.ps1, installer/uninstall.ps1 publish-app -Force
+
+      - name: Stage portable artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item publish-portable/Armadillo.exe dist/Armadillo-portable.exe -Force
+          Copy-Item publish-cli/armadillo.exe dist/armadillo.exe -Force
+
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer/Armadillo.iss
+
+      # ---------- Code signing (free for OSS — SignPath Foundation), inert until enabled ----------
+      - name: Upload unsigned artifacts (for signing)
+        id: unsigned
+        if: vars.SIGNING_ENABLED == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: armadillo-unsigned
+          path: |
+            dist/Armadillo-Setup.exe
+            dist/Armadillo-portable.exe
+            dist/armadillo.exe
+
+      - name: Sign with SignPath
+        if: vars.SIGNING_ENABLED == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORG_ID }}
+          project-slug: armadillo
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: initial
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: dist
+
+      # ---------- Publish the release (tag pushes only) ----------
+      - name: Build release notes from CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $text = Get-Content CHANGELOG.md -Raw
+          $pattern = "(?ms)^## \[" + [regex]::Escape($version) + "\].*?(?=^## \[|\z)"
+          $m = [regex]::Match($text, $pattern)
+          $notes = if ($m.Success) { $m.Value.Trim() } else { "See the changelog." }
+          $notes | Out-File release-notes.md -Encoding utf8
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Armadillo-Setup.exe
+            dist/Armadillo-portable.exe
+            dist/armadillo.exe
+          body_path: release-notes.md
+          fail_on_unmatched_files: true
