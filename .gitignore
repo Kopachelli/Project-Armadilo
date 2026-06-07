@@ -7,6 +7,10 @@ obj/
 # Test results
 TestResults/
 
+# Node sidecar
+node_modules/
+sidecar/dist/
+
 # Local artifacts
 *.log
 

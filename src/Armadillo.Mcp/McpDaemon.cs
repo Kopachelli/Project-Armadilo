@@ -1,7 +1,10 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Armadillo.Core.Orchestration;
+using Armadillo.Core.Review;
+using Armadillo.Core.Tools;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -37,6 +40,7 @@ public static class McpDaemon
         var app = builder.Build();
         app.Urls.Add($"http://127.0.0.1:{port}");
         app.MapMcp();
+        MapControlApi(app);
 
         await app.StartAsync(ct).ConfigureAwait(false);
 
@@ -46,13 +50,79 @@ public static class McpDaemon
 
         WriteOperatorConfig(operatorConfigPath, baseUrl, token);
 
+        var sidecarEnv = Path.Combine(Path.GetDirectoryName(operatorConfigPath)!, "sidecar.env");
+        File.WriteAllText(sidecarEnv, $"ARMADILLO_URL={baseUrl}\nARMADILLO_TOKEN={token}\n");
+
         log?.Invoke($"MCP server listening on {baseUrl}");
+        log?.Invoke($"control API + MCP on {baseUrl} (loopback, token-protected)");
         log?.Invoke($"operator config written to {operatorConfigPath}");
+        log?.Invoke($"sidecar env written to    {sidecarEnv}");
         log?.Invoke("point a CLI at it, e.g.:  claude --mcp-config \"" + operatorConfigPath + "\" --strict-mcp-config -p \"use the request_agent tool to ...\"");
         log?.Invoke("press Ctrl+C to stop.");
 
         await app.WaitForShutdownAsync(ct).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Plain-HTTP control API alongside MCP — the integration surface the TS sidecar (ACP/A2A bridges)
+    /// calls. Token-protected; honours the same lineage header as MCP so the fork-bomb guard applies.
+    /// </summary>
+    private static void MapControlApi(WebApplication app)
+    {
+        app.MapGet("/api/health", () => Results.Json(new { ok = true, service = "armadillo" }));
+
+        app.MapPost("/api/request_agent", async (HttpContext ctx, AgentDispatcher dispatcher, McpEndpoint ep) =>
+        {
+            if (!string.IsNullOrEmpty(ep.Token) &&
+                ctx.Request.Headers["X-Armadillo-Token"].ToString() != ep.Token)
+                return Results.Unauthorized();
+
+            var body = await ctx.Request.ReadFromJsonAsync<RequestAgentBody>(ctx.RequestAborted);
+            if (body is null || string.IsNullOrWhiteSpace(body.Task))
+                return Results.BadRequest(new { error = "task is required" });
+
+            var req = new SpawnRequest
+            {
+                Persona = string.IsNullOrWhiteSpace(body.Persona)
+                    ? "You are a focused helper agent. Complete the task directly and concisely."
+                    : body.Persona!,
+                Task = body.Task!,
+                Tool = ParseTool(body.Tool),
+                Lineage = ChildLineage(ctx.Request.Headers["X-Armadillo-Lineage"].ToString()),
+            };
+
+            var n = Math.Clamp(body.Count ?? 1, 1, 8);
+            var outcomes = n == 1
+                ? new[] { await dispatcher.DispatchAsync(req, ctx.RequestAborted) }
+                : (await dispatcher.DispatchManyAsync(req, n, ct: ctx.RequestAborted)).ToArray();
+
+            return Results.Json(new
+            {
+                results = outcomes.Select(o => new
+                {
+                    jobId = o.JobId, ok = o.Ok, reason = o.Reason, finalText = o.FinalText,
+                    verdict = o.Verdict.ToString().ToLowerInvariant(), confidence = o.Confidence,
+                    inputTokens = o.InputTokens, outputTokens = o.OutputTokens,
+                }),
+            });
+        });
+    }
+
+    private static ToolId ParseTool(string? tool)
+        => tool is not null && Enum.TryParse<ToolId>(tool, ignoreCase: true, out var t) ? t : ToolId.Claude;
+
+    private static SpawnLineage ChildLineage(string lineageHeader)
+    {
+        if (!string.IsNullOrEmpty(lineageHeader))
+        {
+            var idx = lineageHeader.LastIndexOf(':');
+            if (idx > 0 && int.TryParse(lineageHeader[(idx + 1)..], out var depth))
+                return new SpawnLineage(lineageHeader[..idx], depth + 1);
+        }
+        return SpawnLineage.NewRoot();
+    }
+
+    private sealed record RequestAgentBody(string? Task, string? Persona, string? Tool, int? Count);
 
     private static void WriteOperatorConfig(string path, string url, string token)
     {

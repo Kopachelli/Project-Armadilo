@@ -8,8 +8,8 @@ right headless agent(s), **captures and reviews everything** (locally, to save t
 from each run, and returns the result. It works with **one** tool or **many**, on the same or
 different tasks. Local now; cloud later. Protocol-, tool-, and provider-agnostic by design.
 
-> Status: **Phase 0 + Phase 1 complete** — the spine + brain work end-to-end over MCP. See the
-> roadmap below. The full design lives in the approved plan.
+> Status: **Phases 0–4 working** end-to-end (spine, brain, multi-tool, autonomous self-improvement),
+> **Phase 2 protocols** A2A live + ACP preview via the TS sidecar. See the roadmap below.
 
 ## Architecture (four layers, brain at the center)
 
@@ -28,8 +28,9 @@ different tasks. Local now; cloud later. Protocol-, tool-, and provider-agnostic
 | `Armadillo.Core` | Brain, spawning, persistence, adapters, governor, dispatcher (no UI/transport) |
 | `Armadillo.Detection` | Detects installed CLIs + Ollama models (ported from Quiver-Pro) |
 | `Armadillo.Mcp` | MCP server (`request_agent`) over Streamable HTTP on `127.0.0.1` |
-| `Armadillo.Host` | `armadillo` console: `doctor` / `run` / `serve` |
-| `Armadillo.Tests` | xUnit tests (governor, reviewer, adapter, resolver) |
+| `Armadillo.Host` | `armadillo` console: `doctor` / `run` / `serve` / `improve` / `playbooks` / `kill-switch` |
+| `Armadillo.Tests` | xUnit tests (governor, reviewer, adapter, resolver, self-improvement) |
+| `sidecar/` (Node/TS) | Protocol bridges — A2A (live) + Zed ACP (preview) → Core control API |
 
 ## Quick start
 
@@ -60,12 +61,14 @@ per-root spawn caps. MCP binds loopback-only and requires a shared token. Everyt
 
 ## Roadmap
 
-- **Phase 2** — Protocol layer: Zed **ACP** + **A2A** via a TypeScript sidecar.
-- **Phase 3** — More adapters (Codex, Cursor, Gemini/Qwen family, Copilot, Pi, OpenCode) + parallel
-  fan-out, worktree isolation, cross-tool chains, single-session supervision (Claude hooks).
-- **Phase 4** — The autonomous self-improving brain: shadow A/B promotion of playbooks with
-  auto-rollback, versioning, audit, and a kill switch.
-- **Phase 5** — GUI dashboard, cross-platform, cloud.
+- **Phase 2 (done: A2A live, ACP preview)** — Protocol layer via the TS `sidecar/`: A2A agent card +
+  `message:send` proven end-to-end; Zed ACP stdio bridge is a typechecked preview. MCP stays native .NET.
+- **Phase 3 (done)** — Adapter framework + Cursor/Gemini/Qwen/Codex adapters (Claude live, Gemini
+  mechanically verified, others preview), Router auto-select, parallel fan-out (`count`).
+- **Phase 4 (done)** — Autonomous self-improving brain: propose → A/B → promote on measured win, with
+  versioning, auto-rollback, append-only audit, and a kill switch (`improve` / `playbooks` / `kill-switch`).
+- **Next** — worktree isolation + cross-tool chains; Claude-hook single-session supervision; full ACP
+  conformance + A2A streaming; richer routing priors; Phase 5 GUI/cross-platform/cloud.
 
 ## License
 
