@@ -8,10 +8,12 @@ namespace Armadillo.Core.Tools;
 public sealed record ToolAssets(
     IReadOnlyList<string> Skills,
     IReadOnlyList<string> McpServers,
+    IReadOnlyList<string> Plugins,
     IReadOnlyList<string> ConfigFiles)
 {
     public static readonly ToolAssets Empty = new(
-        Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>());
+        Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>());
 
-    public bool IsEmpty => Skills.Count == 0 && McpServers.Count == 0 && ConfigFiles.Count == 0;
+    public bool IsEmpty => Skills.Count == 0 && McpServers.Count == 0
+        && Plugins.Count == 0 && ConfigFiles.Count == 0;
 }

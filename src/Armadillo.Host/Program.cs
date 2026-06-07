@@ -1,6 +1,8 @@
 using Armadillo.Core;
+using Armadillo.Core.Adapters;
 using Armadillo.Core.Brain;
 using Armadillo.Core.Orchestration;
+using Armadillo.Core.Spawning;
 using Armadillo.Core.Tools;
 using Armadillo.Detection;
 using Armadillo.Host;
@@ -20,6 +22,10 @@ switch (command)
         return await AssetsAsync(args);
     case "chain":
         return await ChainAsync(args);
+    case "supervise":
+        return await SuperviseAsync(args);
+    case "hook":
+        return await HookAsync(args);
     case "improve":
         return await ImproveAsync(args);
     case "playbooks":
@@ -171,6 +177,108 @@ static async Task<int> RunAsync(string[] args)
     return outcomes.All(o => o.Ok) ? 0 : 1;
 }
 
+static async Task<int> SuperviseAsync(string[] args)
+{
+    var opts = ParseFlags(args);
+    var task = opts.Positional;
+    if (string.IsNullOrWhiteSpace(task))
+    {
+        Console.Error.WriteLine("usage: armadillo supervise \"<task>\" [--deny Tool1,Tool2]");
+        return 2;
+    }
+    var deny = (opts.Get("deny") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    var paths = new PathProvider(); paths.EnsureWorkspace();
+    var detected = await new ToolDetector(home: paths.HomeDirectory).DetectAsync(ToolId.Claude);
+    if (!detected.Installed || detected.ExecutablePath is null)
+    {
+        Console.Error.WriteLine("Claude Code is not installed (supervision is Claude-first — it has hooks).");
+        return 1;
+    }
+
+    await using var host = await SupervisorHost.StartAsync(deny, RenderHook);
+    Console.WriteLine($"Supervisor live on {host.Url}  (deny: {(deny.Count == 0 ? "(none — watch only)" : string.Join(", ", deny))})");
+
+    // Hooks settings: every PreToolUse/PostToolUse/Stop event POSTs to us via `armadillo hook`.
+    var hookCmd = BuildHookCommand();
+    var settings = new
+    {
+        hooks = new Dictionary<string, object[]>
+        {
+            ["PreToolUse"] = new object[] { new { matcher = "*", hooks = new[] { new { type = "command", command = hookCmd, timeout = 20 } } } },
+            ["PostToolUse"] = new object[] { new { matcher = "*", hooks = new[] { new { type = "command", command = hookCmd, timeout = 20 } } } },
+            ["Stop"] = new object[] { new { hooks = new[] { new { type = "command", command = hookCmd, timeout = 20 } } } },
+        },
+    };
+    var sessionDir = paths.SessionDir(Ids.New("sup"));
+    Directory.CreateDirectory(sessionDir);
+    var settingsPath = Path.Combine(sessionDir, "hooks.settings.json");
+    await File.WriteAllTextAsync(settingsPath, System.Text.Json.JsonSerializer.Serialize(settings));
+
+    var spec = new RunSpec
+    {
+        FilePath = detected.ExecutablePath,
+        Arguments = new[] { "-p", "--output-format", "stream-json", "--verbose",
+                            "--settings", settingsPath, "--permission-mode", "acceptEdits" },
+        StdinText = task,
+        WorkingDirectory = sessionDir,
+        Environment = new Dictionary<string, string>
+        {
+            ["ARMADILLO_HOOK_URL"] = host.Url,
+            ["ARMADILLO_HOOK_TOKEN"] = host.Token,
+        },
+        Timeout = TimeSpan.FromMinutes(5),
+    };
+
+    Console.WriteLine("--- live session (hook events stream below) ---");
+    var result = await new ProcessRunner().RunAsync(spec);
+    var parsed = new ClaudeAdapter().Parse(result);
+
+    Console.WriteLine();
+    Console.WriteLine("--- session result ---");
+    Console.WriteLine(parsed.FinalText);
+    return 0;
+
+    static void RenderHook(HookEventInfo e)
+    {
+        if (e.Blocked) Console.WriteLine($"  [BLOCKED] {e.Event} {e.Tool} — {e.Reason}");
+        else Console.WriteLine($"  [hook] {e.Event}{(e.Tool is not null ? " " + e.Tool : "")}{(e.Detail is not null ? ": " + e.Detail : "")}");
+    }
+}
+
+// The hook handler Claude invokes per event: forward stdin event to the supervisor, return its decision.
+static async Task<int> HookAsync(string[] args)
+{
+    var opts = ParseFlags(args);
+    var url = opts.Get("url") ?? Environment.GetEnvironmentVariable("ARMADILLO_HOOK_URL");
+    var token = opts.Get("token") ?? Environment.GetEnvironmentVariable("ARMADILLO_HOOK_TOKEN");
+    var payload = await Console.In.ReadToEndAsync();
+    if (string.IsNullOrWhiteSpace(url)) return 0; // no supervisor -> allow
+
+    try
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        using var req = new HttpRequestMessage(HttpMethod.Post, url.TrimEnd('/') + "/api/hook")
+        { Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json") };
+        if (!string.IsNullOrEmpty(token)) req.Headers.Add("X-Armadillo-Token", token);
+        var resp = await http.SendAsync(req);
+        Console.Out.Write(await resp.Content.ReadAsStringAsync());
+    }
+    catch { /* supervisor unreachable -> allow (print nothing) */ }
+    return 0;
+}
+
+static string BuildHookCommand()
+{
+    var exe = Environment.ProcessPath ?? "dotnet";
+    var dll = System.Reflection.Assembly.GetEntryAssembly()?.Location;
+    var isDotnet = Path.GetFileNameWithoutExtension(exe).Equals("dotnet", StringComparison.OrdinalIgnoreCase);
+    return isDotnet && !string.IsNullOrEmpty(dll)
+        ? $"\"{exe}\" \"{dll}\" hook"
+        : $"\"{exe}\" hook";
+}
+
 static async Task<int> ChainAsync(string[] args)
 {
     var opts = ParseFlags(args);
@@ -262,6 +370,8 @@ static async Task<int> AssetsAsync(string[] args)
             Console.WriteLine($"  skills ({assets.Skills.Count}): {string.Join(", ", assets.Skills.Take(20))}{(assets.Skills.Count > 20 ? " …" : "")}");
         if (assets.McpServers.Count > 0)
             Console.WriteLine($"  mcp servers ({assets.McpServers.Count}): {string.Join(", ", assets.McpServers)}");
+        if (assets.Plugins.Count > 0)
+            Console.WriteLine($"  plugins ({assets.Plugins.Count}): {string.Join(", ", assets.Plugins.Take(20))}{(assets.Plugins.Count > 20 ? " …" : "")}");
         if (assets.ConfigFiles.Count > 0)
             foreach (var c in assets.ConfigFiles) Console.WriteLine($"  config: {c}");
         if (assets.IsEmpty) Console.WriteLine("  (no skills/mcp/configs found)");
@@ -368,6 +478,7 @@ static void PrintHelp()
           run           Spawn headless session(s): run "<task>" [--tool T] [--count N] [--review-model M]
           assets        Show skills + MCP servers + configs per tool variant: assets [filter]
           chain         Run a cross-tool pipeline: chain "<goal>" [--repo PATH] | chain --spec file.json
+          supervise     Run + live-supervise a Claude session via hooks: supervise "<task>" [--deny Tool1,Tool2]
           improve       Self-improvement cycle: improve <playbook> --tasks "a||b" [--review-model M]
           playbooks     List versions of a playbook: playbooks <name>
           kill-switch   Halt/allow self-modification: kill-switch <on|off|status>

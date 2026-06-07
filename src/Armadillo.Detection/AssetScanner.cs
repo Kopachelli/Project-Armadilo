@@ -20,6 +20,7 @@ public sealed partial class AssetScanner
         var (skillRoots, configFiles) = AssetsFor(id);
         var skills = new List<string>();
         var mcp = new List<string>();
+        var plugins = new List<string>();
         var foundConfigs = new List<string>();
 
         foreach (var root in skillRoots)
@@ -33,8 +34,64 @@ public sealed partial class AssetScanner
             CollectMcpServers(path, mcp);
         }
 
-        return new ToolAssets(
-            Dedup(skills), Dedup(mcp), foundConfigs);
+        foreach (var proot in PluginRootsFor(id))
+            CollectPlugins(Expand(proot), plugins);
+        CollectClaudeInstalledPlugins(id, plugins);
+
+        return new ToolAssets(Dedup(skills), Dedup(mcp), Dedup(plugins), foundConfigs);
+    }
+
+    /// <summary>Where each tool keeps its plugin cache (each plugin dir holds a .claude-plugin/.codex-plugin/plugin.json).</summary>
+    private static string[] PluginRootsFor(ToolId id) => id switch
+    {
+        ToolId.Claude => new[] { "~/.claude/plugins/cache" },
+        ToolId.Codex or ToolId.CodexApp => new[] { "~/.codex/plugins/cache" },
+        ToolId.Cursor or ToolId.CursorDesktop => new[] { "~/.cursor/plugins/cache" },
+        ToolId.Hermes or ToolId.HermesDesktop => new[] { "~/.hermes/plugins" },
+        _ => Array.Empty<string>(),
+    };
+
+    private static void CollectPlugins(string root, List<string> plugins)
+    {
+        if (!Directory.Exists(root)) return;
+        try
+        {
+            foreach (var dir in new[] { ".claude-plugin", ".codex-plugin" })
+                foreach (var manifest in Directory.EnumerateFiles(root, "plugin.json", SearchOption.AllDirectories)
+                             .Where(p => Path.GetFileName(Path.GetDirectoryName(p)) == dir))
+                {
+                    var name = ReadJsonString(manifest, "name")
+                               ?? Path.GetFileName(Path.GetDirectoryName(Path.GetDirectoryName(manifest)) ?? "");
+                    if (!string.IsNullOrWhiteSpace(name)) plugins.Add(name);
+                    if (plugins.Count > 300) return;
+                }
+        }
+        catch { /* unreadable */ }
+    }
+
+    private void CollectClaudeInstalledPlugins(ToolId id, List<string> plugins)
+    {
+        if (id != ToolId.Claude) return;
+        var path = Expand("~/.claude/plugins/installed_plugins.json");
+        if (!File.Exists(path)) return;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            if (doc.RootElement.TryGetProperty("plugins", out var p) && p.ValueKind == JsonValueKind.Object)
+                foreach (var prop in p.EnumerateObject()) plugins.Add(prop.Name);
+        }
+        catch { /* malformed */ }
+    }
+
+    private static string? ReadJsonString(string path, string key)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            return doc.RootElement.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String
+                ? v.GetString() : null;
+        }
+        catch { return null; }
     }
 
     // --- where each tool keeps its assets ---

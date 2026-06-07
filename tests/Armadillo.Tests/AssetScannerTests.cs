@@ -47,6 +47,18 @@ public class AssetScannerTests : IDisposable
     }
 
     [Fact]
+    public void Reads_plugins_from_cache_manifest()
+    {
+        var dir = Path.Combine(_home, ".claude", "plugins", "cache", "myplugin", ".claude-plugin");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "plugin.json"), """{"name":"my-plugin","version":"1.0"}""");
+
+        var assets = new AssetScanner(_home).Scan(ToolId.Claude);
+
+        Assert.Contains("my-plugin", assets.Plugins);
+    }
+
+    [Fact]
     public void Counts_skills_by_skill_md()
     {
         var skillDir = Path.Combine(_home, ".claude", "skills", "my-skill");
